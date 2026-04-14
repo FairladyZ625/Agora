@@ -446,6 +446,7 @@ describe('task routes', () => {
         name: 'Project API Nomos',
         repo_path: repoRoot,
         initialize_repo: true,
+        bootstrap_methodology: 'lean_delivery',
       },
     });
 
@@ -459,6 +460,7 @@ describe('task routes', () => {
         agora: {
           nomos: {
             id: 'agora/default',
+            bootstrap_methodology: 'lean_delivery',
           },
         },
       },
@@ -472,12 +474,13 @@ describe('task routes', () => {
     expect(readFileSync(join(agoraHomeDir, 'projects', 'proj-nomos-api', 'nomos', 'project-nomos', 'profile.toml'), 'utf8')).toContain('id = "project/proj-nomos-api"');
     expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.title).toBe('Create Project Nomos: Project API Nomos');
     expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.description).toContain(
-      join(agoraHomeDir, 'projects', 'proj-nomos-api', 'prompts', 'bootstrap', 'interview.md'),
+      join(agoraHomeDir, 'projects', 'proj-nomos-api', 'prompts', 'bootstrap', 'lean-delivery.md'),
     );
     expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.description).toContain(
       join(agoraHomeDir, 'projects', 'proj-nomos-api', 'docs', 'reference', 'project-nomos-authoring-spec.md'),
     );
     expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.description).toContain('Bootstrap mode: `new_repo`');
+    expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.description).toContain('Bootstrap methodology: `lean_delivery`');
   });
 
   it('serves explicit Nomos catalog and project install state through the api', async () => {
@@ -521,6 +524,7 @@ describe('task routes', () => {
       payload: {
         repo_path: repoRoot,
         initialize_repo: true,
+        bootstrap_methodology: 'discovery_first',
       },
     });
     const inspectResponse = await app.inject({
@@ -552,7 +556,7 @@ describe('task routes', () => {
         },
         lifecycle: expect.arrayContaining(['project-bootstrap.md', 'task-context-delivery.md', 'task-closeout.md']),
         prompts: {
-          bootstrap: expect.arrayContaining(['interview.md', 'existing-project.md', 'new-project.md', 'no-repo.md']),
+          bootstrap: expect.arrayContaining(['interview.md', 'existing-project.md', 'new-project.md', 'no-repo.md', 'layered.md', 'lean-delivery.md', 'discovery-first.md']),
           closeout: expect.arrayContaining(['review.md']),
           doctor: expect.arrayContaining(['project.md']),
         },
@@ -561,6 +565,10 @@ describe('task routes', () => {
         modules: expect.arrayContaining(['project-bootstrap', 'task-context-delivery']),
       }),
     });
+    expect(taskService.getTask('OC-SERVER-NOMOS-INSTALL')?.description).toContain(
+      join(agoraHomeDir, 'projects', 'proj-nomos-rest', 'prompts', 'bootstrap', 'discovery-first.md'),
+    );
+    expect(taskService.getTask('OC-SERVER-NOMOS-INSTALL')?.description).toContain('Bootstrap methodology: `discovery_first`');
 
     expect(installResponse.statusCode).toBe(200);
     expect(installResponse.json()).toMatchObject({

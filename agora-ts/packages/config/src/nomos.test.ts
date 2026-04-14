@@ -166,6 +166,9 @@ describe('nomos pack model freeze', () => {
     expect(readFileSync(installed.layout.bootstrapExistingProjectPromptPath, 'utf8')).toContain('Existing Project Bootstrap');
     expect(readFileSync(installed.layout.bootstrapNewProjectPromptPath, 'utf8')).toContain('New Project Bootstrap');
     expect(readFileSync(installed.layout.bootstrapNoRepoPromptPath, 'utf8')).toContain('No-Repo Bootstrap');
+    expect(readFileSync(join(installed.layout.bootstrapPromptsDir, 'layered.md'), 'utf8')).toContain('Layered Bootstrap Methodology');
+    expect(readFileSync(join(installed.layout.bootstrapPromptsDir, 'lean-delivery.md'), 'utf8')).toContain('Lean Delivery Bootstrap Methodology');
+    expect(readFileSync(join(installed.layout.bootstrapPromptsDir, 'discovery-first.md'), 'utf8')).toContain('Discovery-First Bootstrap Methodology');
     expect(readFileSync(installed.layout.docsReferenceMethodologiesPath, 'utf8')).toContain('Methodologies');
     expect(readFileSync(installed.layout.docsReferenceMethodologiesPath, 'utf8')).toContain('Planning trio + SSoT + walkthrough loop');
     expect(readFileSync(installed.layout.docsReferenceCurrentSurfacePath, 'utf8')).toContain('Current Surface');
@@ -228,6 +231,7 @@ describe('nomos pack model freeze', () => {
       'project_name: "Refine Project"',
       'base_nomos_id: "agora/default"',
       'project_shape: "existing_repo"',
+      'bootstrap_methodology: "lean_delivery"',
       'repo_path: "/tmp/refine-repo"',
       'purpose: "Refined Nomos for a code-heavy product project."',
       'lifecycle_modules:',
@@ -250,6 +254,7 @@ describe('nomos pack model freeze', () => {
 
     const parsed = parseProjectNomosAuthoringSpec(seeded.specPath);
     expect(parsed.project_shape).toBe('existing_repo');
+    expect(parsed.bootstrap_methodology).toBe('lean_delivery');
     expect(parsed.lifecycle_modules).toEqual(['project-bootstrap', 'task-closeout']);
     expect(parsed.doctor_checks).toEqual(['constitution-present', 'bootstrap-prompts-present']);
     expect(parsed.methodology_keep).toEqual(['planning trio', 'walkthrough discipline']);
@@ -265,6 +270,7 @@ describe('nomos pack model freeze', () => {
     expect(readFileSync(join(refined.draftDir, 'docs', 'reference', 'methodologies.md'), 'utf8')).toContain('planning trio');
     expect(readFileSync(join(refined.draftDir, 'docs', 'reference', 'methodologies.md'), 'utf8')).toContain('replace dashboard-first review with CLI-first review');
     expect(readFileSync(join(refined.draftDir, 'prompts', 'bootstrap', 'interview.md'), 'utf8')).toContain('Should closeout require human signoff?');
+    expect(readFileSync(join(refined.draftDir, 'prompts', 'bootstrap', 'lean-delivery.md'), 'utf8')).toContain('Lean Delivery Bootstrap Methodology');
   });
 
   it('preserves manually edited constitution and lifecycle docs on refine-project by default', () => {

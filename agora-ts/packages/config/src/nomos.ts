@@ -51,6 +51,15 @@ export const NOMOS_LIFECYCLE_MODULES = [
 export const nomosLifecycleModuleSchema = z.enum(NOMOS_LIFECYCLE_MODULES);
 export type NomosLifecycleModule = z.infer<typeof nomosLifecycleModuleSchema>;
 
+export const PROJECT_BOOTSTRAP_METHODOLOGIES = [
+  'layered',
+  'lean_delivery',
+  'discovery_first',
+] as const satisfies readonly string[];
+
+export const projectBootstrapMethodologySchema = z.enum(PROJECT_BOOTSTRAP_METHODOLOGIES);
+export type ProjectBootstrapMethodology = z.infer<typeof projectBootstrapMethodologySchema>;
+
 export const nomosProjectProfileSchema = z.object({
   schema_version: z.literal(1),
   project: z.object({
@@ -186,6 +195,7 @@ export interface PrepareProjectNomosInstallOptions extends ResolveAgoraProjectSt
   repoPath?: string | null | undefined;
   initializeRepo?: boolean;
   forceWriteRepoShim?: boolean;
+  bootstrapMethodology?: ProjectBootstrapMethodology | null | undefined;
 }
 
 export interface PreparedProjectNomosInstallResult {
@@ -197,6 +207,7 @@ export interface PreparedProjectNomosInstallResult {
   effectiveRuntimePaths: ProjectNomosRuntimePaths;
   effectiveNomosState: ResolvedProjectNomosState;
   bootstrapMode: 'existing_repo' | 'new_repo' | 'no_repo';
+  bootstrapMethodology: ProjectBootstrapMethodology;
 }
 
 export interface InstalledBuiltInAgoraNomosResult {
@@ -506,6 +517,7 @@ export interface InstallNomosFromSourceResult extends InstallCatalogNomosPackToP
 export interface EnsureProjectNomosAuthoringDraftOptions extends ResolveAgoraProjectStateOptions {
   repoPath?: string | null;
   nomosId?: string | null;
+  bootstrapMethodology?: ProjectBootstrapMethodology | null | undefined;
 }
 
 export interface ProjectNomosAuthoringDraftResult {
@@ -520,6 +532,7 @@ export interface ProjectNomosAuthoringSpec {
   project_name: string;
   base_nomos_id: string;
   project_shape: 'existing_repo' | 'new_repo' | 'no_repo';
+  bootstrap_methodology: ProjectBootstrapMethodology;
   repo_path: string | null;
   purpose: string;
   lifecycle_modules: NomosLifecycleModule[];
@@ -658,6 +671,7 @@ export interface ProjectNomosRuntimePaths {
   nomos_root: string;
   lifecycle_root: string;
   bootstrap_prompts_dir: string;
+  bootstrap_methodology: ProjectBootstrapMethodology;
   bootstrap_interview_prompt_path: string;
   closeout_review_prompt_path: string;
   doctor_project_prompt_path: string;
@@ -762,6 +776,9 @@ export const BUILT_IN_AGORA_NOMOS_BOOTSTRAP_PROMPTS = [
   'existing-project.md',
   'new-project.md',
   'no-repo.md',
+  'layered.md',
+  'lean-delivery.md',
+  'discovery-first.md',
 ] as const satisfies readonly string[];
 
 export const BUILT_IN_AGORA_NOMOS_CLOSEOUT_PROMPTS = [
@@ -819,6 +836,9 @@ export function ensureProjectNomosAuthoringDraft(
     projectName,
     ...(options.repoPath !== undefined ? { repoPath: options.repoPath } : {}),
     ...(options.nomosId !== undefined ? { nomosId: options.nomosId } : {}),
+    bootstrapMethodology: options.bootstrapMethodology ?? inferProjectBootstrapMethodology({
+      repoPath: options.repoPath,
+    }),
   }));
 
   const templateDir = resolveAvailableCreateNomosPackTemplateDir(options);
@@ -860,13 +880,19 @@ export function parseProjectNomosAuthoringSpec(path: string): ProjectNomosAuthor
   const raw = readFileSync(path, 'utf8');
   const frontmatter = parseStructuredFrontmatter(raw);
   const defaultShape = frontmatter.repo_path ? 'existing_repo' : 'no_repo';
+  const projectShape = asProjectShape(frontmatter.project_shape ?? defaultShape);
+  const repoPath = asOptionalString(frontmatter.repo_path);
 
   return {
     project_id: asRequiredString(frontmatter.project_id, 'project_id'),
     project_name: asRequiredString(frontmatter.project_name, 'project_name'),
     base_nomos_id: asOptionalString(frontmatter.base_nomos_id) ?? DEFAULT_AGORA_NOMOS_ID,
-    project_shape: asProjectShape(frontmatter.project_shape ?? defaultShape),
-    repo_path: asOptionalString(frontmatter.repo_path) ?? null,
+    project_shape: projectShape,
+    bootstrap_methodology: asProjectBootstrapMethodology(frontmatter.bootstrap_methodology, inferProjectBootstrapMethodology({
+      repoPath,
+      projectShape,
+    })),
+    repo_path: repoPath ?? null,
     purpose: asOptionalString(frontmatter.purpose) ?? '',
     lifecycle_modules: asLifecycleModules(frontmatter.lifecycle_modules),
     doctor_checks: asStringArray(frontmatter.doctor_checks, DEFAULT_CUSTOM_NOMOS_PACK_DOCTOR_CHECKS),
@@ -948,6 +974,11 @@ export function refineProjectNomosDraftFromSpec(
   writeFileSync(
     resolve(layout.projectNomosDraftDir, 'prompts', 'bootstrap', 'interview.md'),
     renderRefinedProjectNomosBootstrapInterview(spec),
+    'utf8',
+  );
+  writeFileSync(
+    resolveNomosBootstrapMethodologyPromptPath(layout.projectNomosDraftDir, spec.bootstrap_methodology),
+    renderRefinedProjectNomosBootstrapMethodology(spec),
     'utf8',
   );
 
@@ -1171,6 +1202,7 @@ export function installBuiltInAgoraNomosForProject(
 export function mergeProjectMetadataWithNomosProfile(
   metadata: Record<string, unknown> | null | undefined,
   profile: NomosProjectProfile,
+  options: { bootstrapMethodology?: ProjectBootstrapMethodology | null | undefined } = {},
 ) {
   const existing = metadata ?? {};
   const existingAgora = asRecord(existing.agora);
@@ -1189,6 +1221,7 @@ export function mergeProjectMetadataWithNomosProfile(
         version: profile.pack.version,
         source: profile.pack.source,
         install_mode: profile.pack.install_mode,
+        bootstrap_methodology: options.bootstrapMethodology ?? asProjectBootstrapMethodology(existingNomos.bootstrap_methodology, 'layered'),
         root_template: profile.project_state.root_template,
         activation_status: 'active_builtin',
         project_state_root: projectStateRoot,
@@ -1460,6 +1493,14 @@ export function prepareProjectNomosInstall(
 ): PreparedProjectNomosInstallResult {
   const preInstallNomosState = resolveProjectNomosState(options.projectId, options.metadata ?? null, options);
   const preInstallRuntimePaths = resolveProjectNomosRuntimePaths(options.projectId, options.metadata ?? null, options);
+  const bootstrapMode = options.repoPath
+    ? ((options.initializeRepo ?? false) ? 'new_repo' : 'existing_repo')
+    : 'no_repo';
+  const bootstrapMethodology = options.bootstrapMethodology
+    ?? resolveProjectBootstrapMethodology(options.metadata ?? null, inferProjectBootstrapMethodology({
+      repoPath: options.repoPath,
+      projectShape: bootstrapMode,
+    }));
   const installedNomos = installBuiltInAgoraNomosForProject(options.projectId, {
     ...(options.repoPath ? { repoPath: options.repoPath } : {}),
     initializeRepo: options.initializeRepo ?? false,
@@ -1469,12 +1510,15 @@ export function prepareProjectNomosInstall(
   const authoringDraft = ensureProjectNomosAuthoringDraft(options.projectId, options.projectName, {
     ...(options.repoPath ? { repoPath: options.repoPath } : {}),
     nomosId: installedNomos.profile.pack.id,
+    bootstrapMethodology,
     ...(options.userAgoraDir ? { userAgoraDir: options.userAgoraDir } : {}),
   });
   const persistedMetadata = mergeProjectMetadataWithNomosProfile({
     ...(options.metadata ?? {}),
     ...(options.repoPath ? { repo_path: options.repoPath } : {}),
-  }, installedNomos.profile);
+  }, installedNomos.profile, {
+    bootstrapMethodology,
+  });
   const runtimePaths = resolveProjectNomosRuntimePaths(options.projectId, persistedMetadata, options);
   const nomosState = resolveProjectNomosState(options.projectId, persistedMetadata, options);
   const effectiveRuntimePaths = preInstallNomosState.activation_status === 'active_project'
@@ -1483,9 +1527,6 @@ export function prepareProjectNomosInstall(
   const effectiveNomosState = preInstallNomosState.activation_status === 'active_project'
     ? preInstallNomosState
     : nomosState;
-  const bootstrapMode = options.repoPath
-    ? ((options.initializeRepo ?? false) ? 'new_repo' : 'existing_repo')
-    : 'no_repo';
 
   return {
     installedNomos,
@@ -1496,6 +1537,7 @@ export function prepareProjectNomosInstall(
     effectiveRuntimePaths,
     effectiveNomosState,
     bootstrapMode,
+    bootstrapMethodology,
   };
 }
 
@@ -1571,21 +1613,32 @@ export function resolveProjectNomosRuntimePaths(
 ): ProjectNomosRuntimePaths {
   const layout = resolveAgoraProjectStateLayout(projectId, options);
   const state = resolveProjectNomosState(projectId, metadata, options);
+  const bootstrapMethodology = resolveProjectBootstrapMethodology(metadata, inferProjectBootstrapMethodology({
+    repoPath: state.repo_path,
+  }));
   if (state.activation_status === 'active_project') {
+    const activePromptPath = resolveNomosBootstrapMethodologyPromptPath(state.active_root, bootstrapMethodology);
     return {
       nomos_root: state.active_root,
       lifecycle_root: resolve(state.active_root, 'lifecycle'),
       bootstrap_prompts_dir: resolve(state.active_root, 'prompts', 'bootstrap'),
-      bootstrap_interview_prompt_path: resolve(state.active_root, 'prompts', 'bootstrap', 'interview.md'),
+      bootstrap_methodology: bootstrapMethodology,
+      bootstrap_interview_prompt_path: existsSync(activePromptPath)
+        ? activePromptPath
+        : resolve(state.active_root, 'prompts', 'bootstrap', 'interview.md'),
       closeout_review_prompt_path: resolve(state.active_root, 'prompts', 'closeout', 'review.md'),
       doctor_project_prompt_path: resolve(state.active_root, 'prompts', 'doctor', 'project.md'),
     };
   }
+  const builtInPromptPath = resolveNomosBootstrapMethodologyPromptPath(layout.root, bootstrapMethodology);
   return {
     nomos_root: layout.root,
     lifecycle_root: layout.lifecycleDir,
     bootstrap_prompts_dir: layout.bootstrapPromptsDir,
-    bootstrap_interview_prompt_path: layout.bootstrapInterviewPromptPath,
+    bootstrap_methodology: bootstrapMethodology,
+    bootstrap_interview_prompt_path: existsSync(builtInPromptPath)
+      ? builtInPromptPath
+      : layout.bootstrapInterviewPromptPath,
     closeout_review_prompt_path: layout.closeoutReviewPromptPath,
     doctor_project_prompt_path: layout.doctorProjectPromptPath,
   };
@@ -2832,6 +2885,12 @@ function seedBuiltInAgoraNomosFiles(layout: AgoraProjectStateLayout, profile: No
   writeFileIfMissing(layout.bootstrapExistingProjectPromptPath, renderBuiltInExistingProjectPrompt(layout));
   writeFileIfMissing(layout.bootstrapNewProjectPromptPath, renderBuiltInNewProjectPrompt(layout));
   writeFileIfMissing(layout.bootstrapNoRepoPromptPath, renderBuiltInNoRepoPrompt(layout));
+  for (const methodology of PROJECT_BOOTSTRAP_METHODOLOGIES) {
+    writeFileIfMissing(
+      resolveNomosBootstrapMethodologyPromptPath(layout.root, methodology),
+      renderBuiltInBootstrapMethodologyPrompt(methodology, layout),
+    );
+  }
   writeFileIfMissing(layout.closeoutReviewPromptPath, renderBuiltInCloseoutReviewPrompt(profile));
   writeFileIfMissing(layout.doctorProjectPromptPath, renderBuiltInDoctorPrompt(profile, layout));
 }
@@ -2891,6 +2950,7 @@ function renderProjectNomosAuthoringSpec(input: {
   projectName: string;
   repoPath?: string | null;
   nomosId?: string | null;
+  bootstrapMethodology: ProjectBootstrapMethodology;
 }) {
   return [
     '---',
@@ -2898,6 +2958,7 @@ function renderProjectNomosAuthoringSpec(input: {
     `project_name: ${tomlString(input.projectName)}`,
     `base_nomos_id: ${tomlString(input.nomosId ?? DEFAULT_AGORA_NOMOS_ID)}`,
     `project_shape: ${tomlString(input.repoPath ? 'existing_repo' : 'no_repo')}`,
+    `bootstrap_methodology: ${tomlString(input.bootstrapMethodology)}`,
     `repo_path: ${tomlString(input.repoPath ?? '')}`,
     'purpose: ""',
     `lifecycle_modules: ${tomlStringArray(DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES)}`,
@@ -3054,6 +3115,27 @@ function renderRefinedProjectNomosBootstrapInterview(spec: ProjectNomosAuthoring
     '',
     `Project shape: \`${spec.project_shape}\``,
     `Repo path: ${spec.repo_path ? `\`${spec.repo_path}\`` : 'none yet'}`,
+    '',
+    'Open questions:',
+    ...renderListOrPlaceholder(spec.open_questions),
+    '',
+  ].join('\n');
+}
+
+function renderRefinedProjectNomosBootstrapMethodology(spec: ProjectNomosAuthoringSpec) {
+  const heading = describeBootstrapMethodology(spec.bootstrap_methodology);
+  return [
+    `# ${heading}`,
+    '',
+    `Selected methodology: \`${spec.bootstrap_methodology}\``,
+    '',
+    ...renderBootstrapMethodologyGuidance(spec.bootstrap_methodology),
+    '',
+    'Project-specific carry-over:',
+    ...renderListOrPlaceholder(spec.methodology_keep),
+    '',
+    'Project-specific changes:',
+    ...renderListOrPlaceholder(spec.methodology_change),
     '',
     'Open questions:',
     ...renderListOrPlaceholder(spec.open_questions),
@@ -3465,6 +3547,81 @@ function asProjectShape(value: unknown): ProjectNomosAuthoringSpec['project_shap
   throw new Error(`Unsupported project_shape: ${String(value)}`);
 }
 
+function asProjectBootstrapMethodology(
+  value: unknown,
+  fallback: ProjectBootstrapMethodology = 'layered',
+): ProjectBootstrapMethodology {
+  return projectBootstrapMethodologySchema.catch(fallback).parse(value);
+}
+
+function inferProjectBootstrapMethodology(input: {
+  repoPath?: string | null | undefined;
+  projectShape?: ProjectNomosAuthoringSpec['project_shape'] | undefined;
+}): ProjectBootstrapMethodology {
+  if (input.projectShape === 'no_repo' || (!input.projectShape && !input.repoPath)) {
+    return 'discovery_first';
+  }
+  return 'layered';
+}
+
+function resolveProjectBootstrapMethodology(
+  metadata: Record<string, unknown> | null | undefined,
+  fallback: ProjectBootstrapMethodology = 'layered',
+): ProjectBootstrapMethodology {
+  const existingAgora = asRecord(metadata?.agora);
+  const existingNomos = asRecord(existingAgora.nomos);
+  return asProjectBootstrapMethodology(existingNomos.bootstrap_methodology, fallback);
+}
+
+function resolveBootstrapMethodologyFilename(methodology: ProjectBootstrapMethodology) {
+  switch (methodology) {
+    case 'layered':
+      return 'layered.md';
+    case 'lean_delivery':
+      return 'lean-delivery.md';
+    case 'discovery_first':
+      return 'discovery-first.md';
+  }
+}
+
+function resolveNomosBootstrapMethodologyPromptPath(nomosRoot: string, methodology: ProjectBootstrapMethodology) {
+  return resolve(nomosRoot, 'prompts', 'bootstrap', resolveBootstrapMethodologyFilename(methodology));
+}
+
+function describeBootstrapMethodology(methodology: ProjectBootstrapMethodology) {
+  switch (methodology) {
+    case 'layered':
+      return 'Layered Bootstrap Methodology';
+    case 'lean_delivery':
+      return 'Lean Delivery Bootstrap Methodology';
+    case 'discovery_first':
+      return 'Discovery-First Bootstrap Methodology';
+  }
+}
+
+function renderBootstrapMethodologyGuidance(methodology: ProjectBootstrapMethodology) {
+  switch (methodology) {
+    case 'layered':
+      return [
+        '- Preserve the full planning trio + SSoT + walkthrough loop.',
+        '- Keep governance, verification, and closeout expectations explicit from day one.',
+        '- Use when the project needs the default Agora operating model with minimal drift.',
+      ];
+    case 'lean_delivery':
+      return [
+        '- Keep only the durable docs that actively steer delivery; avoid ceremony with no execution value.',
+        '- Bias toward CLI-first execution and faster shipping while preserving evidence-before-assertion.',
+        '- Use when the team needs a lighter delivery surface without dropping core governance.',
+      ];
+    case 'discovery_first':
+      return [
+        '- Spend the first pass capturing unknowns, references, constraints, and operator context before locking process.',
+        '- Treat repo/tooling choices as provisional until the project surface is understood.',
+        '- Use when the project is non-code-first or the current surface is still ambiguous.',
+      ];
+  }
+}
+
 function asLifecycleModules(value: unknown) {
   const items = asStringArray(value, DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES);
   const modules: NomosLifecycleModule[] = [];
@@ -3625,6 +3782,11 @@ function renderBuiltInMethodologiesReference(profile: NomosProjectProfile) {
     '- Runtime / IM bridge expectations',
     '- Release, closeout, and archive discipline',
     '',
+    'Available bootstrap methodology variants:',
+    '- `layered`',
+    '- `lean_delivery`',
+    '- `discovery_first`',
+    '',
   ].join('\n');
 }
 
@@ -3687,6 +3849,7 @@ function renderBuiltInBootstrapFieldsReference(profile: NomosProjectProfile) {
     '',
     'Required bootstrap fields:',
     '- Project shape (existing repo / new repo / no repo)',
+    '- Bootstrap methodology (`layered` / `lean_delivery` / `discovery_first`)',
     '- Current surface and working roots',
     '- Known constraints and non-negotiable decisions',
     '- Methodologies for planning, execution, and verification',
@@ -3751,6 +3914,25 @@ function renderBuiltInBootstrapInterviewPrompt(profile: NomosProjectProfile, lay
     `- Existing repo flow: ${layout.bootstrapExistingProjectPromptPath}`,
     `- New repo flow: ${layout.bootstrapNewProjectPromptPath}`,
     `- No-repo flow: ${layout.bootstrapNoRepoPromptPath}`,
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInBootstrapMethodologyPrompt(
+  methodology: ProjectBootstrapMethodology,
+  layout: AgoraProjectStateLayout,
+) {
+  return [
+    `# ${describeBootstrapMethodology(methodology)}`,
+    '',
+    `Use this methodology branch when bootstrap should follow \`${methodology}\` expectations.`,
+    '',
+    ...renderBootstrapMethodologyGuidance(methodology),
+    '',
+    'Keep repo-shape branching explicit:',
+    `- Existing repo: ${layout.bootstrapExistingProjectPromptPath}`,
+    `- New repo: ${layout.bootstrapNewProjectPromptPath}`,
+    `- No repo: ${layout.bootstrapNoRepoPromptPath}`,
     '',
   ].join('\n');
 }

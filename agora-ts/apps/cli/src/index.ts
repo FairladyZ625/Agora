@@ -28,6 +28,7 @@ import {
   listPublishedNomosCatalog,
   listRegisteredNomosSources,
   publishProjectNomosPack,
+  projectBootstrapMethodologySchema,
   registerNomosSource,
   refineProjectNomosDraftFromSpec,
   NOMOS_LIFECYCLE_MODULES,
@@ -45,6 +46,7 @@ import {
   validateProjectNomos,
 } from '@agora-ts/config';
 import type { StartCommandRunner } from './start-command.js';
+import type { ProjectBootstrapMethodology } from '@agora-ts/config';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
 import {
@@ -229,6 +231,15 @@ function parseIntegerOption(rawValue: string): number {
     throw new Error(`invalid integer value: ${rawValue}`);
   }
   return parsed;
+}
+
+function parseBootstrapMethodologyOption(
+  rawValue: string | undefined,
+): ProjectBootstrapMethodology | undefined {
+  if (!rawValue) {
+    return undefined;
+  }
+  return projectBootstrapMethodologySchema.parse(rawValue);
 }
 
 function resolveAccountLabel(humanAccountService: HumanAccountService, accountId: number) {
@@ -1787,6 +1798,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .description('为已有 project 安装或重装 built-in Nomos')
     .requiredOption('--project-id <projectId>', 'project id')
     .option('--repo-path <path>', 'bind to an existing or new repo path')
+    .option('--bootstrap-methodology <methodology>', 'layered|lean_delivery|discovery_first')
     .option('--initialize-repo', 'create the repo path if it does not exist and initialize git', false)
     .option('--force-write-repo-shim', 'overwrite repo-root AGENTS.md shim', false)
     .option('--skip-bootstrap-task', 'do not create a bootstrap task after install', false)
@@ -1795,6 +1807,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .action((options: {
       projectId: string;
       repoPath?: string;
+      bootstrapMethodology?: string;
       initializeRepo?: boolean;
       forceWriteRepoShim?: boolean;
       skipBootstrapTask?: boolean;
@@ -1802,12 +1815,14 @@ export function createCliProgram(deps: CliDependencies = {}) {
       json?: boolean;
     }) => {
       const project = projectService.requireProject(options.projectId);
+      const bootstrapMethodology = parseBootstrapMethodologyOption(options.bootstrapMethodology);
       const preparedNomos = prepareProjectNomosInstall({
         projectId: project.id,
         projectName: project.name,
         projectOwner: project.owner,
         metadata: project.metadata ?? {},
         repoPath: options.repoPath,
+        ...(bootstrapMethodology ? { bootstrapMethodology } : {}),
         initializeRepo: options.initializeRepo ?? false,
         forceWriteRepoShim: options.forceWriteRepoShim ?? false,
       });
@@ -1828,6 +1843,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
           project_nomos_draft_root: preparedNomos.authoringDraft.draftDir,
           bootstrap_prompt_path: preparedNomos.effectiveRuntimePaths.bootstrap_interview_prompt_path,
           bootstrap_mode: preparedNomos.bootstrapMode,
+          bootstrap_methodology: preparedNomos.bootstrapMethodology,
         });
         bootstrapTaskId = bootstrapTask.id;
       }
@@ -1853,6 +1869,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       }
       writeLine(stdout, `Project Nomos Spec: ${preparedNomos.authoringDraft.specPath}`);
       writeLine(stdout, `Project Nomos Draft: ${preparedNomos.authoringDraft.draftDir}`);
+      writeLine(stdout, `Bootstrap Methodology: ${preparedNomos.bootstrapMethodology}`);
       writeLine(stdout, `Repo Git Initialized: ${preparedNomos.installedNomos.repoGitInitialized}`);
       writeLine(stdout, `Project State Git Initialized: ${preparedNomos.installedNomos.projectStateGitInitialized}`);
       if (bootstrapTaskId) {
@@ -1911,6 +1928,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--repo-path <path>', 'bind to an existing or new repo path')
     .option('--new-repo', 'create the repo path if it does not exist and initialize git', false)
     .option('--nomos-id <nomosId>', 'Nomos pack id (currently only agora/default)', DEFAULT_AGORA_NOMOS_ID)
+    .option('--bootstrap-methodology <methodology>', 'layered|lean_delivery|discovery_first')
     .option('--metadata-json <json>', 'project metadata JSON')
     .action((options: {
       id: string;
@@ -1922,9 +1940,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
       repoPath?: string;
       newRepo?: boolean;
       nomosId?: string;
+      bootstrapMethodology?: string;
       metadataJson?: string;
     }) => {
       const nomosId = requireSupportedNomosId(options.nomosId);
+      const bootstrapMethodology = parseBootstrapMethodologyOption(options.bootstrapMethodology);
       const adminAccountIds = parseAccountOptionList(humanAccountService, options.adminAccountId, '--admin-account-id');
       const memberAccountIds = parseAccountOptionList(humanAccountService, options.memberAccountId, '--member-account-id');
       const derivedOwner = options.owner
@@ -1939,6 +1959,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         ...(options.repoPath ? { repo_path: options.repoPath } : {}),
         ...(options.newRepo ? { initialize_repo: true } : {}),
         nomos_id: nomosId,
+        ...(bootstrapMethodology ? { bootstrap_methodology: bootstrapMethodology } : {}),
         ...(options.metadataJson ? { metadata: parseJsonOption(options.metadataJson, '--metadata-json') } : {}),
       }) satisfies CreateProjectInputLike;
       const project = projectService.createProject(input);
@@ -1948,6 +1969,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         projectOwner: project.owner,
         metadata: input.metadata ?? {},
         repoPath: input.repo_path,
+        ...(input.bootstrap_methodology ? { bootstrapMethodology: input.bootstrap_methodology } : {}),
         initializeRepo: input.initialize_repo ?? false,
       });
       projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
@@ -1966,6 +1988,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
           project_nomos_draft_root: preparedNomos.authoringDraft.draftDir,
           bootstrap_prompt_path: preparedNomos.runtimePaths.bootstrap_interview_prompt_path,
           bootstrap_mode: preparedNomos.bootstrapMode,
+          bootstrap_methodology: preparedNomos.bootstrapMethodology,
         })
         : null;
       writeLine(stdout, `Project 已创建: ${project.id}`);
@@ -1978,6 +2001,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       }
       writeLine(stdout, `Project Nomos Spec: ${preparedNomos.authoringDraft.specPath}`);
       writeLine(stdout, `Project Nomos Draft: ${preparedNomos.authoringDraft.draftDir}`);
+      writeLine(stdout, `Bootstrap Methodology: ${preparedNomos.bootstrapMethodology}`);
       if (bootstrapTask) {
         writeLine(stdout, `Bootstrap Task: ${bootstrapTask.id}`);
       }

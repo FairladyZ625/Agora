@@ -6,6 +6,7 @@ import { taskSchema } from './task-api.js';
 
 const projectStatusSchema = z.enum(['active', 'archived']);
 export type ProjectStatusDto = z.infer<typeof projectStatusSchema>;
+const bootstrapMethodologySchema = z.enum(['layered', 'lean_delivery', 'discovery_first']);
 
 export const projectSchema = z.object({
   id: z.string().min(1),
@@ -30,6 +31,7 @@ export const createProjectRequestSchema = z.object({
   repo_path: z.string().min(1).optional(),
   initialize_repo: z.boolean().optional(),
   nomos_id: z.string().min(1).optional(),
+  bootstrap_methodology: bootstrapMethodologySchema.optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 export type CreateProjectRequestDto = z.infer<typeof createProjectRequestSchema>;

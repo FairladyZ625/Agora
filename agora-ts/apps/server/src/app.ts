@@ -2018,6 +2018,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         projectOwner: project.owner,
         metadata: payload.metadata ?? {},
         repoPath: payload.repo_path,
+        ...(payload.bootstrap_methodology ? { bootstrapMethodology: payload.bootstrap_methodology } : {}),
         initializeRepo: payload.initialize_repo ?? false,
       });
       projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
@@ -2038,6 +2039,7 @@ export function buildApp(options: BuildAppOptions = {}) {
           bootstrap_mode: payload.repo_path
             ? (payload.initialize_repo ? 'new_repo' : 'existing_repo')
             : 'no_repo',
+          bootstrap_methodology: preparedNomos.bootstrapMethodology,
         });
       }
       return reply.send(projectService.requireProject(project.id));
@@ -2476,6 +2478,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       const { projectId } = request.params as { projectId: string };
       const payload = (request.body as {
         repo_path?: string;
+        bootstrap_methodology?: 'layered' | 'lean_delivery' | 'discovery_first';
         initialize_repo?: boolean;
         force_write_repo_shim?: boolean;
         skip_bootstrap_task?: boolean;
@@ -2491,6 +2494,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         projectOwner: project.owner,
         metadata: project.metadata ?? {},
         repoPath: effectiveRepoPath,
+        ...(payload.bootstrap_methodology ? { bootstrapMethodology: payload.bootstrap_methodology } : {}),
         initializeRepo: payload.initialize_repo ?? false,
         forceWriteRepoShim: payload.force_write_repo_shim ?? false,
       });
@@ -2511,6 +2515,7 @@ export function buildApp(options: BuildAppOptions = {}) {
           project_nomos_draft_root: preparedNomos.authoringDraft.draftDir,
           bootstrap_prompt_path: preparedNomos.effectiveRuntimePaths.bootstrap_interview_prompt_path,
           bootstrap_mode: preparedNomos.bootstrapMode,
+          bootstrap_methodology: preparedNomos.bootstrapMethodology,
         });
         bootstrapTaskId = bootstrapTask.id;
       }

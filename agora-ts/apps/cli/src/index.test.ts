@@ -486,6 +486,8 @@ describe('agora-ts cli', () => {
       '--repo-path',
       repoRoot,
       '--new-repo',
+      '--bootstrap-methodology',
+      'lean_delivery',
     ], { from: 'user' });
 
     expect(stderr.value).toBe('');
@@ -500,15 +502,17 @@ describe('agora-ts cli', () => {
       'id = "proj-nomos"',
     );
     expect(readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'docs', 'reference', 'project-nomos-authoring-spec.md'), 'utf8')).toContain('Project Nomos Authoring Spec');
+    expect(readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'docs', 'reference', 'project-nomos-authoring-spec.md'), 'utf8')).toContain('bootstrap_methodology: "lean_delivery"');
     expect(readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'nomos', 'project-nomos', 'profile.toml'), 'utf8')).toContain('id = "project/proj-nomos"');
     expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.title).toBe('Create Project Nomos: Project Nomos');
     expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.description).toContain(
-      join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'prompts', 'bootstrap', 'interview.md'),
+      join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'prompts', 'bootstrap', 'lean-delivery.md'),
     );
     expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.description).toContain(
       join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'docs', 'reference', 'project-nomos-authoring-spec.md'),
     );
     expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.description).toContain('Bootstrap mode: `new_repo`');
+    expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.description).toContain('Bootstrap methodology: `lean_delivery`');
   });
 
   it('lists and shows the built-in Nomos pack through explicit cli commands', async () => {
@@ -529,7 +533,7 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('shim sections: general_constitution, pack_index, bootstrap_method, fill_policy');
     expect(stdout.value).toContain('seeded references: current-surface.md, methodologies.md, governance.md, lifecycle.md, bootstrap-fields.md');
     expect(stdout.value).toContain('seeded lifecycle docs: project-bootstrap.md, task-context-delivery.md, task-closeout.md, project-archive.md, governance-doctor.md');
-    expect(stdout.value).toContain('seeded bootstrap prompts: interview.md, existing-project.md, new-project.md, no-repo.md');
+    expect(stdout.value).toContain('seeded bootstrap prompts: interview.md, existing-project.md, new-project.md, no-repo.md, layered.md, lean-delivery.md, discovery-first.md');
   });
 
   it('installs Nomos for an existing project and exposes inspect-project output', async () => {
@@ -568,6 +572,8 @@ describe('agora-ts cli', () => {
       '--repo-path',
       repoRoot,
       '--initialize-repo',
+      '--bootstrap-methodology',
+      'discovery_first',
     ], { from: 'user' });
 
     await program.parseAsync([
@@ -591,6 +597,10 @@ describe('agora-ts cli', () => {
       'id = "proj-existing-nomos"',
     );
     expect(taskService.getTask('OC-NOMOS-INSTALL')?.title).toBe('Create Project Nomos: Existing Nomos Project');
+    expect(taskService.getTask('OC-NOMOS-INSTALL')?.description).toContain(
+      join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-existing-nomos', 'prompts', 'bootstrap', 'discovery-first.md'),
+    );
+    expect(taskService.getTask('OC-NOMOS-INSTALL')?.description).toContain('Bootstrap methodology: `discovery_first`');
   });
 
   it('reviews and activates a project-specific nomos draft through explicit cli commands', async () => {

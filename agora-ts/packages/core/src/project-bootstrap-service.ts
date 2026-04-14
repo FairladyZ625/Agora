@@ -14,6 +14,7 @@ export interface CreateProjectHarnessBootstrapTaskInput {
   project_nomos_draft_root?: string | null | undefined;
   bootstrap_prompt_path?: string | null | undefined;
   bootstrap_mode?: 'existing_repo' | 'new_repo' | 'no_repo' | null | undefined;
+  bootstrap_methodology?: 'layered' | 'lean_delivery' | 'discovery_first' | null | undefined;
   context_sources?: ContextSourceBindingDto[] | undefined;
 }
 
@@ -162,6 +163,9 @@ function buildHarnessBootstrapDescription(input: CreateProjectHarnessBootstrapTa
   }
   if (input.bootstrap_mode) {
     lines.push(`- Bootstrap mode: \`${input.bootstrap_mode}\``);
+  }
+  if (input.bootstrap_methodology) {
+    lines.push(`- Bootstrap methodology: \`${input.bootstrap_methodology}\``);
   }
   if (input.context_sources && input.context_sources.length > 0) {
     lines.push('- Initial context sources:');

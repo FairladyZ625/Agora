@@ -97,8 +97,9 @@ describe('project bootstrap service', () => {
       nomos_id: 'agora/default',
       project_nomos_spec_path: '/Users/example/.agora/projects/proj-bootstrap/docs/reference/project-nomos-authoring-spec.md',
       project_nomos_draft_root: '/Users/example/.agora/projects/proj-bootstrap/nomos/project-nomos',
-      bootstrap_prompt_path: '/Users/example/.agora/projects/proj-bootstrap/prompts/bootstrap/interview.md',
+      bootstrap_prompt_path: '/Users/example/.agora/projects/proj-bootstrap/prompts/bootstrap/lean-delivery.md',
       bootstrap_mode: 'existing_repo',
+      bootstrap_methodology: 'lean_delivery',
       context_sources: [
         {
           source_id: 'docs-architecture',
@@ -119,8 +120,9 @@ describe('project bootstrap service', () => {
     expect(task.description).toContain('/tmp/bootstrap-project');
     expect(task.description).toContain('/Users/example/.agora/projects/proj-bootstrap/docs/reference/project-nomos-authoring-spec.md');
     expect(task.description).toContain('/Users/example/.agora/projects/proj-bootstrap/nomos/project-nomos');
-    expect(task.description).toContain('/Users/example/.agora/projects/proj-bootstrap/prompts/bootstrap/interview.md');
+    expect(task.description).toContain('/Users/example/.agora/projects/proj-bootstrap/prompts/bootstrap/lean-delivery.md');
     expect(task.description).toContain('Bootstrap mode: `existing_repo`');
+    expect(task.description).toContain('Bootstrap methodology: `lean_delivery`');
     expect(task.description).toContain('[docs_repo] Architecture Docs -> `/repo/docs/architecture`');
     expect(task.description).toContain('agora nomos refine-project --project-id proj-bootstrap');
     expect(readFileSync(join(projectStateDir, 'proj-bootstrap', 'knowledge', 'facts', 'bootstrap-current-surface.md'), 'utf8')).toContain(
