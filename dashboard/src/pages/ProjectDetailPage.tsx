@@ -73,9 +73,9 @@ export function ProjectDetailPage() {
             <p className="page-summary">{project.summary ?? copy.emptySummary}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <Link className="button-secondary" to={`/projects/${project.id}/brain`}>{copy.openBrainAction}</Link>
-              <Link className="button-secondary" to={`/projects/${project.id}/knowledge`}>Knowledge</Link>
-              <Link className="button-secondary" to={`/projects/${project.id}/archive`}>Archive</Link>
-              <Link className="button-secondary" to={`/projects/${project.id}/operator`}>Operator</Link>
+              <Link className="button-secondary" to={`/projects/${project.id}/knowledge`}>{copy.openKnowledgeAction}</Link>
+              <Link className="button-secondary" to={`/projects/${project.id}/archive`}>{copy.openArchiveAction}</Link>
+              <Link className="button-secondary" to={`/projects/${project.id}/operator`}>{copy.openOperatorAction}</Link>
               <Link className="button-secondary" to={`/tasks/new?project=${project.id}`}>{copy.createTaskAction}</Link>
               <Link className="button-secondary" to={`/todos?project=${project.id}`}>{copy.createTodoAction}</Link>
             </div>
@@ -236,20 +236,20 @@ export function ProjectDetailPage() {
           <div className="space-y-6">
             <section data-testid="project-workspace-handoffs-panel">
               <div className="section-title-row">
-                <h4 className="section-title">Workspace Handoffs</h4>
+                <h4 className="section-title">{copy.workspaceHandoffsTitle}</h4>
               </div>
               <div className="mt-5 grid gap-3">
                 <Link className="selection-card text-left" to={`/projects/${project.id}/knowledge`}>
-                  <strong className="type-heading-sm">Knowledge</strong>
-                  <p className="type-body-sm mt-3">{overview.stats.knowledgeCount} durable knowledge documents and project surfaces.</p>
+                  <strong className="type-heading-sm">{copy.openKnowledgeAction}</strong>
+                  <p className="type-body-sm mt-3">{copy.workspaceHandoffsKnowledgeSummary(overview.stats.knowledgeCount)}</p>
                 </Link>
                 <Link className="selection-card text-left" to={`/projects/${project.id}/archive`}>
-                  <strong className="type-heading-sm">Archive</strong>
-                  <p className="type-body-sm mt-3">{overview.stats.recapCount} recap artifacts ready for closeout and archive review.</p>
+                  <strong className="type-heading-sm">{copy.openArchiveAction}</strong>
+                  <p className="type-body-sm mt-3">{copy.workspaceHandoffsArchiveSummary(overview.stats.recapCount)}</p>
                 </Link>
                 <Link className="selection-card text-left" to={`/projects/${project.id}/operator`}>
-                  <strong className="type-heading-sm">Operator</strong>
-                  <p className="type-body-sm mt-3">{operator.citizens.length} citizens and Nomos controls moved into the operator workspace.</p>
+                  <strong className="type-heading-sm">{copy.openOperatorAction}</strong>
+                  <p className="type-body-sm mt-3">{copy.workspaceHandoffsOperatorSummary(operator.citizens.length)}</p>
                 </Link>
               </div>
             </section>
