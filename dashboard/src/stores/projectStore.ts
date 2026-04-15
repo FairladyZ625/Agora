@@ -24,6 +24,7 @@ interface ProjectStore {
     name: string;
     owner: string;
     summary?: string | null;
+    nomos_id?: string;
     admins?: Array<{ account_id: number }>;
     members?: Array<{ account_id: number; role: 'admin' | 'member' }>;
   }) => Promise<ProjectSummary>;

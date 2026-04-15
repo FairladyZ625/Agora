@@ -14,6 +14,8 @@ import { mapProjectWorkbenchDto, mapWorkspaceBootstrapStatusDto } from '@/lib/pr
 import { useProjectStore } from '@/stores/projectStore';
 import type { ProjectWorkbench, WorkspaceBootstrapStatus } from '@/types/project';
 
+const DEFAULT_PROJECT_NOMOS_ID = 'agora/default';
+
 function parseAccountIds(value: string) {
   return value
     .split(',')
@@ -208,6 +210,7 @@ export function ProjectsPage() {
         name: name.trim(),
         owner: 'archon',
         summary: summary.trim() || null,
+        nomos_id: DEFAULT_PROJECT_NOMOS_ID,
         admins: adminIds.map((account_id) => ({ account_id })),
         members: memberIds
           .filter((account_id) => !adminIds.includes(account_id))
@@ -281,6 +284,15 @@ export function ProjectsPage() {
                 placeholder={copy.summaryPlaceholder}
               />
             </label>
+            <div className="space-y-2 lg:col-span-2">
+              <span className="field-label">{copy.createNomosLabel}</span>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="status-pill status-pill--neutral">
+                  {copy.createNomosValueLabel}: {DEFAULT_PROJECT_NOMOS_ID}
+                </span>
+                <p className="type-body-sm">{copy.createNomosHint}</p>
+              </div>
+            </div>
             <label className="space-y-2">
               <span className="field-label">{copy.adminAccountsLabel}</span>
               <input

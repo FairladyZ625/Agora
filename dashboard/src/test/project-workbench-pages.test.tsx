@@ -1326,7 +1326,10 @@ describe('project workbench pages', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Create Project' }));
+    const createPanel = screen.getByTestId('projects-create-panel');
     expect(screen.queryByText('Project ID')).not.toBeInTheDocument();
+    expect(within(createPanel).getByText('Default Nomos')).toBeInTheDocument();
+    expect(within(createPanel).getByText('Nomos: agora/default')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Project Name'), { target: { value: 'Project Beta' } });
     fireEvent.change(screen.getByLabelText('Summary'), { target: { value: 'New project' } });
     fireEvent.change(screen.getByLabelText('Project Admin Account IDs'), { target: { value: '11,12' } });
@@ -1338,6 +1341,7 @@ describe('project workbench pages', () => {
         name: 'Project Beta',
         owner: 'archon',
         summary: 'New project',
+        nomos_id: 'agora/default',
         admins: [{ account_id: 11 }, { account_id: 12 }],
         members: [{ account_id: 13, role: 'member' }],
       });
