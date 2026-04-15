@@ -1,18 +1,19 @@
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ApiProjectWorkbenchDto } from '@/lib/api';
 import { setLocale } from '@/lib/i18n';
+import { ProjectArchiveWorkspacePage } from '@/pages/ProjectArchiveWorkspacePage';
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage';
+import { ProjectKnowledgePage } from '@/pages/ProjectKnowledgePage';
+import { ProjectOperatorPage } from '@/pages/ProjectOperatorPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
 import { WorkspaceBootstrapPage } from '@/pages/WorkspaceBootstrapPage';
 
 const fetchProjects = vi.fn(async () => 'live');
 const PROJECTS_PAGE_SELECTION_KEY = 'agora-projects-selected-project';
-let projectStoreState: {
-  selectedProjectId: string | null;
-  selectedProject: Record<string, unknown> | null;
-};
+// Test harness state is intentionally reassigned in setup below.
+// eslint-disable-next-line prefer-const, @typescript-eslint/no-explicit-any
+let projectStoreState: any;
 
 function buildProjectWorkbench(project: {
   id: string;
@@ -260,7 +261,7 @@ const PROJECT_DETAILS = {
   }, 'GR'),
 };
 
-function buildProjectWorkbenchDto(workbench: typeof PROJECT_DETAILS['proj-alpha']): ApiProjectWorkbenchDto {
+function buildProjectWorkbenchDto(workbench: typeof PROJECT_DETAILS['proj-alpha']) {
   return {
     project: {
       id: workbench.project.id,
@@ -1165,6 +1166,42 @@ describe('project workbench pages', () => {
     await screen.findByRole('heading', { name: 'Project Alpha' });
   }
 
+  async function renderProjectKnowledgePage() {
+    render(
+      <MemoryRouter initialEntries={['/projects/proj-alpha/knowledge']}>
+        <Routes>
+          <Route path="/projects/:projectId/knowledge" element={<ProjectKnowledgePage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByTestId('project-knowledge-page-panel');
+  }
+
+  async function renderProjectArchivePage() {
+    render(
+      <MemoryRouter initialEntries={['/projects/proj-alpha/archive']}>
+        <Routes>
+          <Route path="/projects/:projectId/archive" element={<ProjectArchiveWorkspacePage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByTestId('project-archive-page-panel');
+  }
+
+  async function renderProjectOperatorPage() {
+    render(
+      <MemoryRouter initialEntries={['/projects/proj-alpha/operator']}>
+        <Routes>
+          <Route path="/projects/:projectId/operator" element={<ProjectOperatorPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByTestId('project-nomos-panel');
+  }
+
   beforeEach(async () => {
     vi.clearAllMocks();
     localStorage.clear();
@@ -1307,18 +1344,15 @@ describe('project workbench pages', () => {
     });
   });
 
-  it('renders the project detail shell and nomos summary', async () => {
+  it('renders the project detail shell as an overview entry', async () => {
     await renderProjectDetailPage();
 
     expect(screen.getByRole('heading', { name: 'Project Alpha' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Project overview' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Project surfaces' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Current work' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Operator tools' })).toBeInTheDocument();
     expect(fetchProjectDetail).toHaveBeenCalledWith('proj-alpha');
     expect(screen.getByText('Project Alpha Timeline')).toBeInTheDocument();
-    expect(screen.getByText('Bootstrap recap')).toBeInTheDocument();
-    expect(screen.getByText('Runtime Boundary')).toBeInTheDocument();
     expect(screen.getAllByText('Active Tasks').length).toBeGreaterThan(0);
     expect(screen.getByText('Waiting Review')).toBeInTheDocument();
     expect(screen.getAllByText('Pending Todos').length).toBeGreaterThan(0);
@@ -1330,16 +1364,16 @@ describe('project workbench pages', () => {
     expect(screen.getByRole('link', { name: 'Bootstrap flow' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Review handoff' })).toBeInTheDocument();
     expect(screen.getByText('补 Project 入口')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Knowledge' })).toHaveAttribute('href', '/projects/proj-alpha/knowledge');
+    expect(screen.getByRole('link', { name: 'Archive' })).toHaveAttribute('href', '/projects/proj-alpha/archive');
+    expect(screen.getByRole('link', { name: 'Operator' })).toHaveAttribute('href', '/projects/proj-alpha/operator');
     expect(screen.getByRole('link', { name: 'Create Task In Project' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create Todo In Project' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open Project Brain' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Show operator tools' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Review Draft' })).not.toBeInTheDocument();
-    expect(screen.queryByText('/repo/proj-alpha')).not.toBeInTheDocument();
   });
 
   it('runs project nomos management actions', async () => {
-    await renderProjectDetailPage();
+    await renderProjectOperatorPage();
     fireEvent.click(screen.getByRole('button', { name: 'Show operator tools' }));
     expect(screen.getByText('Alpha Architect')).toBeInTheDocument();
     expect(screen.getByText('Think in systems.')).toBeInTheDocument();
@@ -1388,7 +1422,7 @@ describe('project workbench pages', () => {
   });
 
   it('runs nomos catalog and source import actions', async () => {
-    await renderProjectDetailPage();
+    await renderProjectOperatorPage();
     fireEvent.click(screen.getByRole('button', { name: 'Show operator tools' }));
 
     fireEvent.change(screen.getByLabelText('Export Dir'), { target: { value: '/tmp/exported-pack' } });
@@ -1460,18 +1494,27 @@ describe('project workbench pages', () => {
     });
   });
 
-  it('renders project detail drill-downs and todo filters', async () => {
-    await renderProjectDetailPage();
+  it('renders project knowledge and archive drill-downs on the new shell routes', async () => {
+    await renderProjectKnowledgePage();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open recap Bootstrap recap' }));
-    expect(screen.getByRole('dialog', { name: 'PROJECT RECAP' })).toBeInTheDocument();
-    expect(screen.getByText('Task recap line.')).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole('button', { name: /关闭|Close/ })[1]);
+    expect(screen.getByText('Runtime Boundary')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Open knowledge Runtime Boundary' }));
     const knowledgeDialog = screen.getByRole('dialog', { name: 'PROJECT KNOWLEDGE' });
     expect(knowledgeDialog).toBeInTheDocument();
     expect(within(knowledgeDialog).getByText('OC-100')).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: /关闭|Close/ })[1]);
+
+    cleanup();
+    await renderProjectArchivePage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open recap Bootstrap recap' }));
+    expect(screen.getByRole('dialog', { name: 'PROJECT RECAP' })).toBeInTheDocument();
+    expect(screen.getByText('Task recap line.')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: /关闭|Close/ })[1]);
+  });
+
+  it('renders operator citizen drill-downs and preserves overview todo filters', async () => {
+    await renderProjectOperatorPage();
     fireEvent.click(screen.getByRole('button', { name: 'Show operator tools' }));
     fireEvent.click(screen.getByRole('button', { name: 'Open citizen Alpha Architect' }));
     const citizenDialog = screen.getByRole('dialog', { name: 'CITIZEN PREVIEW' });
@@ -1479,6 +1522,9 @@ describe('project workbench pages', () => {
     expect(within(citizenDialog).getByText('acpx-agent-delegate, planning-with-files')).toBeInTheDocument();
     expect(within(citizenDialog).getByText(/human_gate/)).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: /关闭|Close/ })[1]);
+
+    cleanup();
+    await renderProjectDetailPage();
     fireEvent.click(screen.getByRole('button', { name: 'Waiting Review Tasks' }));
     expect(screen.queryByRole('link', { name: 'Bootstrap flow' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Review handoff' })).toBeInTheDocument();
@@ -1493,7 +1539,7 @@ describe('project workbench pages', () => {
   });
 
   it('keeps operator controls collapsed until explicitly expanded', async () => {
-    await renderProjectDetailPage();
+    await renderProjectOperatorPage();
 
     expect(screen.queryAllByText('/Users/example/.agora/projects/proj-alpha')).toHaveLength(0);
     expect(screen.queryByRole('button', { name: 'Refresh Catalog' })).not.toBeInTheDocument();

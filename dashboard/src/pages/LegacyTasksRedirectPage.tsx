@@ -31,15 +31,17 @@ export function LegacyTasksRedirectPage() {
   const [loading, setLoading] = useState(Boolean(taskId));
 
   const directHref = useMemo(() => {
-    if (!taskId) {
+    const resolvedTaskId = taskId;
+    if (!resolvedTaskId) {
       return buildProjectWorkHref();
     }
-    const projectId = resolveProjectIdFromStores(taskId, tasks, selectedProject) ?? resolvedProjectId;
-    return projectId ? buildProjectTaskHref(taskId, projectId) : null;
+    const projectId = resolveProjectIdFromStores(resolvedTaskId, tasks, selectedProject) ?? resolvedProjectId;
+    return projectId ? buildProjectTaskHref(resolvedTaskId, projectId) : null;
   }, [resolvedProjectId, selectedProject, taskId, tasks]);
 
   useEffect(() => {
-    if (!taskId || directHref) {
+    const resolvedTaskId = taskId;
+    if (!resolvedTaskId || directHref) {
       setLoading(false);
       return;
     }
@@ -51,7 +53,7 @@ export function LegacyTasksRedirectPage() {
         if (tasks.length === 0) {
           await fetchTasks();
         }
-        const task = await api.getTask(taskId);
+        const task = await api.getTask(resolvedTaskId!);
         if (!cancelled) {
           setResolvedProjectId(task.project_id ?? null);
         }
