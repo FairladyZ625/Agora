@@ -28,6 +28,20 @@ export interface ParticipantExposureStateInput {
   exposure_reason: string;
 }
 
+export interface BindRuntimeSessionInput {
+  participant_binding_id: string;
+  runtime_provider: string;
+  runtime_session_ref: string;
+  runtime_actor_ref: string | null;
+  continuity_ref?: string | null;
+  presence_state: 'active' | 'idle' | 'closed';
+  binding_reason: string;
+  desired_runtime_presence?: 'attached' | 'detached';
+  reconcile_stage_id?: string | null;
+  reconciled_at?: string | null;
+  last_seen_at: string;
+}
+
 function desiredRuntimePresence(desiredExposure: ParticipantExposureStateInput['desired_exposure']) {
   return desiredExposure === 'in_thread' ? 'attached' : 'detached';
 }
@@ -82,8 +96,38 @@ export class TaskParticipationService {
     return this.participants.listByTask(taskId);
   }
 
+  getParticipantById(participantId: string): ParticipantBindingRecord | null {
+    return this.participants.getById(participantId);
+  }
+
   listRuntimeSessions(taskId: string): RuntimeSessionBindingRecord[] {
     return this.runtimeSessions.listByTask(taskId);
+  }
+
+  getRuntimeSessionByParticipant(participantId: string): RuntimeSessionBindingRecord | null {
+    return this.runtimeSessions.getByParticipantBinding(participantId);
+  }
+
+  bindRuntimeSession(input: BindRuntimeSessionInput): RuntimeSessionBindingRecord | null {
+    const participant = this.participants.getById(input.participant_binding_id);
+    if (!participant) {
+      return null;
+    }
+    return this.runtimeSessions.upsertByParticipant({
+      id: this.runtimeSessionIdGenerator(),
+      participant_binding_id: input.participant_binding_id,
+      runtime_provider: input.runtime_provider,
+      runtime_session_ref: input.runtime_session_ref,
+      runtime_actor_ref: input.runtime_actor_ref,
+      continuity_ref: input.continuity_ref ?? null,
+      presence_state: input.presence_state,
+      binding_reason: input.binding_reason,
+      desired_runtime_presence: input.desired_runtime_presence
+        ?? desiredRuntimePresence(participant.desired_exposure as 'in_thread' | 'hidden'),
+      reconcile_stage_id: input.reconcile_stage_id ?? participant.exposure_stage_id,
+      reconciled_at: input.reconciled_at ?? participant.reconciled_at,
+      last_seen_at: input.last_seen_at,
+    });
   }
 
   markParticipantJoinState(

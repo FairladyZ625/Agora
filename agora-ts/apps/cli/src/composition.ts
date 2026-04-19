@@ -101,7 +101,7 @@ import {
 } from '@agora-ts/core';
 import { FilesystemContextSourceRetrievalAdapter, FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter, OpenAiCompatibleProjectBrainEmbeddingAdapter, QdrantProjectBrainVectorIndexAdapter } from '@agora-ts/adapters-brain';
 import { ProjectContextBriefingMaterializer, RuntimeRepoShimMaterializer } from '@agora-ts/adapters-materialization';
-import { CcConnectAgentRegistry, CcConnectCitizenProjectionAdapter } from '@agora-ts/adapters-cc-connect';
+import { CcConnectAgentRegistry } from '@agora-ts/adapters-cc-connect';
 import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
 import { OsHostResourcePort } from '@agora-ts/adapters-host';
 import { AcpCraftsmanInputPort, AcpCraftsmanProbePort, AcpCraftsmanTailPort, AcpRuntimeRecoveryPort, createDefaultCraftsmanAdapters, DirectAcpxRuntimePort, TmuxCraftsmanInputPort, TmuxCraftsmanProbePort, TmuxCraftsmanTailPort, TmuxRuntimeRecoveryPort, TmuxRuntimeService } from '@agora-ts/adapters-runtime';
@@ -369,7 +369,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       repository: new CitizenRepository(context.db),
       projectService: deps.projectService,
       rolePackService: deps.rolePackService,
-      projectionPorts: [new OpenClawCitizenProjectionAdapter(), new CcConnectCitizenProjectionAdapter()],
+      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
     }),
     createProjectBrainAutomationService: (_context, deps) => new ProjectBrainAutomationService({
       projectBrainService: deps.projectBrainService,

@@ -98,6 +98,8 @@ import type {
   CreateCitizenRequestDto,
   OrchestratorDirectCreateRequestDto,
   CreateProjectRequestDto,
+  EnsureProjectImSpaceRequestDto,
+  CurrentImContextResolveRequestDto,
   CreateSubtasksRequestDto,
   TaskPriority,
   TemplateDetailDto,
@@ -111,6 +113,8 @@ import {
   craftsmanExecutionTailResponseSchema,
   createCitizenRequestSchema,
   createProjectRequestSchema,
+  ensureProjectImSpaceRequestSchema,
+  currentImContextResolveRequestSchema,
   createSubtasksRequestSchema,
   createTaskRequestSchema,
 } from '@agora-ts/contracts';
@@ -120,6 +124,40 @@ import { classifyCliError, CliError, CLI_EXIT_CODES, renderCliError } from './er
 import { cliText, resolveCliLocale } from './locale.js';
 import type { HumanAccountService } from '@agora-ts/core';
 
+type CcConnectThreadSessionServiceLike = {
+  ensureSessionBinding(input: {
+    agentRef: string;
+    provider: string;
+    threadRef: string;
+    participantBindingId: string;
+    sessionName: string | null;
+  }): Promise<{
+    projectName: string;
+    sessionKey: string;
+    sessionId: string | null;
+    created: boolean;
+    switched: boolean;
+  }>;
+  deliverText(input: {
+    agentRef: string;
+    provider: string;
+    threadRef: string;
+    participantBindingId: string;
+    message: string;
+  }): Promise<{
+    binding: {
+      projectName: string;
+      sessionKey: string;
+      sessionId: string | null;
+      created: boolean;
+      switched: boolean;
+    };
+    receipt: {
+      message: string;
+    };
+  }>;
+};
+
 type Writable = {
   write: (chunk: string) => void;
 };
@@ -127,6 +165,8 @@ type Writable = {
 type CreateTaskInputLike = Parameters<TaskService['createTask']>[0];
 
 type CreateProjectInputLike = CreateProjectRequestDto;
+type EnsureProjectImSpaceInputLike = EnsureProjectImSpaceRequestDto;
+type CurrentImContextResolveInputLike = CurrentImContextResolveRequestDto;
 type CreateCitizenInputLike = CreateCitizenRequestDto;
 
 const CLI_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -155,6 +195,7 @@ export interface CliDependencies {
   dashboardQueryService?: DashboardQueryService;
   ccConnectInspectionService?: CcConnectInspectionService;
   ccConnectManagementService?: CcConnectManagementService;
+  ccConnectThreadSessionService?: CcConnectThreadSessionServiceLike;
   imProvisioningPort?: IMProvisioningPort;
   factories?: Partial<CliCompositionFactories>;
   startCommandRunner?: StartCommandRunner;
@@ -2103,6 +2144,114 @@ export function createCliProgram(deps: CliDependencies = {}) {
       const membership = projectService.removeProjectMembership(projectId, accountId);
       writeLine(stdout, `Project member 已移除: ${resolveAccountLabel(humanAccountService, membership.account_id)}`);
       writeLine(stdout, `${membership.account_id}\t${membership.role}\t${membership.status}`);
+    });
+
+  const projectImSpace = projects
+    .command('im-space')
+    .description('project IM space commands');
+
+  projectImSpace
+    .command('ensure')
+    .argument('<projectId>', 'project id')
+    .option('--provider <provider>', 'IM provider', 'discord')
+    .option('--conversation-ref <ref>', 'existing project space / forum channel id')
+    .option('--parent-ref <ref>', 'parent category/channel id when creating a new project space')
+    .action(async (projectId: string, options: { provider?: string; conversationRef?: string; parentRef?: string }) => {
+      const imProvisioningPort = getImProvisioningPort();
+      if (!imProvisioningPort?.ensureProjectSpace) {
+        throw new Error('IM project space provisioning is not configured');
+      }
+      const payload = ensureProjectImSpaceRequestSchema.parse({
+        provider: options.provider ?? 'discord',
+        ...(options.conversationRef ? { conversation_ref: options.conversationRef } : {}),
+        ...(options.parentRef ? { parent_ref: options.parentRef } : {}),
+      }) satisfies EnsureProjectImSpaceInputLike;
+      const project = projectService.requireProject(projectId);
+      const existing = projectService.getProjectImSpace(project.id, payload.provider);
+      const ensured = existing && !payload.conversation_ref && !payload.parent_ref
+        ? {
+            im_provider: payload.provider,
+            conversation_ref: existing.conversation_ref,
+            parent_ref: existing.parent_ref ?? null,
+            kind: existing.kind ?? null,
+            managed_by: existing.managed_by ?? null,
+          }
+        : await imProvisioningPort.ensureProjectSpace({
+            project_id: project.id,
+            project_name: project.name,
+            target: {
+              provider: payload.provider,
+              ...(payload.conversation_ref ? { conversation_ref: payload.conversation_ref } : {}),
+              ...(payload.parent_ref ? { parent_ref: payload.parent_ref } : {}),
+            },
+          });
+      projectService.upsertProjectImSpace(project.id, {
+        provider: ensured.im_provider,
+        conversation_ref: ensured.conversation_ref,
+        ...(ensured.parent_ref ? { parent_ref: ensured.parent_ref } : {}),
+        ...(ensured.kind ? { kind: ensured.kind } : {}),
+        ...(ensured.managed_by ? { managed_by: ensured.managed_by } : {}),
+      });
+      writeLine(stdout, `Project IM space ready: ${project.id}`);
+      writeLine(stdout, `provider: ${ensured.im_provider}`);
+      writeLine(stdout, `conversation_ref: ${ensured.conversation_ref}`);
+      writeLine(stdout, `parent_ref: ${ensured.parent_ref ?? '-'}`);
+      writeLine(stdout, `kind: ${ensured.kind ?? '-'}`);
+      writeLine(stdout, `managed_by: ${ensured.managed_by ?? '-'}`);
+    });
+
+  const im = program
+    .command('im')
+    .description('IM context utilities');
+
+  im
+    .command('resolve')
+    .description('resolve whether an IM context belongs to an Agora-managed project/task space')
+    .option('--provider <provider>', 'IM provider', 'discord')
+    .option('--thread-ref <ref>', 'thread ref')
+    .option('--conversation-ref <ref>', 'conversation ref')
+    .action((options: { provider?: string; threadRef?: string; conversationRef?: string }) => {
+      const payload = currentImContextResolveRequestSchema.parse({
+        provider: options.provider ?? 'discord',
+        ...(options.threadRef ? { thread_ref: options.threadRef } : {}),
+        ...(options.conversationRef ? { conversation_ref: options.conversationRef } : {}),
+      }) satisfies CurrentImContextResolveInputLike;
+      const binding = taskContextBindingService?.findLatestBindingByRefs({
+        provider: payload.provider,
+        thread_ref: payload.thread_ref ?? null,
+        conversation_ref: payload.conversation_ref ?? null,
+      }) ?? null;
+      if (binding) {
+        const task = taskService?.getTask(binding.task_id) ?? null;
+        const project = task?.project_id ? projectService.getProject(task.project_id) : null;
+        const projectSpace = project ? projectService.getProjectImSpace(project.id, payload.provider) : null;
+        writeLine(stdout, 'managed: true');
+        writeLine(stdout, 'scope: task_thread');
+        writeLine(stdout, `binding_id: ${binding.id}`);
+        writeLine(stdout, `task_id: ${task?.id ?? '-'}`);
+        writeLine(stdout, `project_id: ${project?.id ?? '-'}`);
+        writeLine(stdout, `project_space: ${projectSpace?.conversation_ref ?? '-'}`);
+        return;
+      }
+      const project = payload.conversation_ref
+        ? projectService.findProjectByImSpace(payload.provider, payload.conversation_ref)
+        : null;
+      const projectSpace = project ? projectService.getProjectImSpace(project.id, payload.provider) : null;
+      if (project && projectSpace) {
+        writeLine(stdout, 'managed: true');
+        writeLine(stdout, 'scope: project_space');
+        writeLine(stdout, 'binding_id: -');
+        writeLine(stdout, 'task_id: -');
+        writeLine(stdout, `project_id: ${project.id}`);
+        writeLine(stdout, `project_space: ${projectSpace.conversation_ref}`);
+        return;
+      }
+      writeLine(stdout, 'managed: false');
+      writeLine(stdout, 'scope: none');
+      writeLine(stdout, 'binding_id: -');
+      writeLine(stdout, 'task_id: -');
+      writeLine(stdout, 'project_id: -');
+      writeLine(stdout, 'project_space: -');
     });
 
   projects
@@ -4604,6 +4753,67 @@ export function createCliProgram(deps: CliDependencies = {}) {
       }
       writeLine(stdout, result.message);
     });
+
+  if (deps.ccConnectThreadSessionService) {
+    const ccConnectThreadSession = ccConnect
+      .command('thread-session')
+      .description('manage Agora-owned thread sessions through cc-connect');
+
+    ccConnectThreadSession
+      .command('ensure')
+      .requiredOption('--agent-ref <agentRef>', 'cc-connect agent ref')
+      .requiredOption('--thread-ref <threadRef>', 'Agora discord thread ref')
+      .requiredOption('--participant-binding-id <participantBindingId>', 'Agora participant binding id')
+      .option('--provider <provider>', 'IM provider', 'discord')
+      .option('--session-name <name>', 'cc-connect session display name')
+      .action(async (options: {
+        agentRef: string;
+        threadRef: string;
+        participantBindingId: string;
+        provider?: string;
+        sessionName?: string;
+      }) => {
+        const binding = await deps.ccConnectThreadSessionService!.ensureSessionBinding({
+          agentRef: options.agentRef,
+          provider: options.provider ?? 'discord',
+          threadRef: options.threadRef,
+          participantBindingId: options.participantBindingId,
+          sessionName: options.sessionName ?? null,
+        });
+        writeLine(stdout, `project: ${binding.projectName}`);
+        writeLine(stdout, `session_key: ${binding.sessionKey}`);
+        writeLine(stdout, `session_id: ${binding.sessionId ?? '-'}`);
+        writeLine(stdout, `created: ${binding.created}`);
+        writeLine(stdout, `switched: ${binding.switched}`);
+      });
+
+    ccConnectThreadSession
+      .command('deliver')
+      .requiredOption('--agent-ref <agentRef>', 'cc-connect agent ref')
+      .requiredOption('--thread-ref <threadRef>', 'Agora discord thread ref')
+      .requiredOption('--participant-binding-id <participantBindingId>', 'Agora participant binding id')
+      .requiredOption('--message <text>', 'message body')
+      .option('--provider <provider>', 'IM provider', 'discord')
+      .action(async (options: {
+        agentRef: string;
+        threadRef: string;
+        participantBindingId: string;
+        message: string;
+        provider?: string;
+      }) => {
+        const result = await deps.ccConnectThreadSessionService!.deliverText({
+          agentRef: options.agentRef,
+          provider: options.provider ?? 'discord',
+          threadRef: options.threadRef,
+          participantBindingId: options.participantBindingId,
+          message: options.message,
+        });
+        writeLine(stdout, `project: ${result.binding.projectName}`);
+        writeLine(stdout, `session_key: ${result.binding.sessionKey}`);
+        writeLine(stdout, `session_id: ${result.binding.sessionId ?? '-'}`);
+        writeLine(stdout, `message: ${result.receipt.message}`);
+      });
+  }
 
   program
     .command('start')

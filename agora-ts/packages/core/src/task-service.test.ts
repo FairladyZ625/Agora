@@ -3789,6 +3789,57 @@ describe('task service', () => {
     expect(provisioningPort.published).toHaveLength(1);
   });
 
+  it('uses project-scoped discord IM space when creating a task without an explicit conversation_ref', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'unused-parent-channel',
+      thread_ref: 'discord-thread-project-space-1',
+    });
+    const projectService = createProjectServiceFromDb(db);
+    projectService.createProject({
+      id: 'proj-discord-space',
+      name: 'Project Discord Space',
+    });
+    projectService.upsertProjectImSpace('proj-discord-space', {
+      provider: 'discord',
+      conversation_ref: 'discord-project-forum-1',
+      parent_ref: 'discord-category-1',
+      kind: 'forum_channel',
+      managed_by: 'agora',
+    });
+
+    const service = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROJ-SPACE-1',
+      projectService,
+      imProvisioningPort: provisioningPort,
+    });
+
+    service.createTask({
+      title: 'Project forum task',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      project_id: 'proj-discord-space',
+      im_target: { provider: 'discord', visibility: 'public' },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(provisioningPort.provisioned).toHaveLength(1);
+    expect(provisioningPort.provisioned[0]).toMatchObject({
+      task_id: 'OC-PROJ-SPACE-1',
+      target: expect.objectContaining({
+        provider: 'discord',
+        conversation_ref: 'discord-project-forum-1',
+        visibility: 'public',
+      }),
+    });
+  });
+
   it('publishes bootstrap root and per-agent directed briefs when IM and brain services are configured', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

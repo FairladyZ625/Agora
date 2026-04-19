@@ -36,6 +36,22 @@ export const createProjectRequestSchema = z.object({
 }).strict();
 export type CreateProjectRequestDto = z.infer<typeof createProjectRequestSchema>;
 
+export const ensureProjectImSpaceRequestSchema = z.object({
+  provider: z.string().min(1).default('discord'),
+  conversation_ref: z.string().min(1).optional(),
+  parent_ref: z.string().min(1).optional(),
+}).strict();
+export type EnsureProjectImSpaceRequestDto = z.infer<typeof ensureProjectImSpaceRequestSchema>;
+
+export const projectImSpaceBindingSchema = z.object({
+  provider: z.string().min(1),
+  conversation_ref: z.string().min(1),
+  parent_ref: z.string().nullable().optional(),
+  kind: z.string().nullable().optional(),
+  managed_by: z.string().nullable().optional(),
+}).strict();
+export type ProjectImSpaceBindingDto = z.infer<typeof projectImSpaceBindingSchema>;
+
 export const listProjectsResponseSchema = z.object({
   projects: z.array(projectSchema),
 });

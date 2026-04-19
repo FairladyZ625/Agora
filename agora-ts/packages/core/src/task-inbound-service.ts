@@ -7,6 +7,8 @@ import { NotFoundError } from './errors.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskConversationService } from './task-conversation-service.js';
 import type { TaskService } from './task-service.js';
+import type { RuntimeThreadMessageRouter } from './runtime-message-ports.js';
+import type { TaskParticipationService } from './task-participation-service.js';
 
 export interface TaskInboundActionResult {
   kind: TaskConversationInboundActionDto['kind'];
@@ -29,6 +31,8 @@ export class TaskInboundService {
     private readonly taskConversationService: TaskConversationService,
     private readonly taskContextBindingService: TaskContextBindingService,
     private readonly taskService: TaskService,
+    private readonly participantService?: Pick<TaskParticipationService, 'listParticipants'>,
+    private readonly runtimeThreadMessageRouter?: RuntimeThreadMessageRouter,
   ) {}
 
   ingest(input: IngestTaskConversationEntryRequestDto): TaskInboundIngestResult {
@@ -36,6 +40,29 @@ export class TaskInboundService {
     const entry = this.taskConversationService.ingest(conversationInput);
     if (!entry) {
       return { entry: null, task_action_result: null };
+    }
+    if (
+      !task_action
+      && conversationInput.direction === 'inbound'
+      && conversationInput.author_kind === 'human'
+      && this.participantService
+      && this.runtimeThreadMessageRouter
+    ) {
+      const participants = this.participantService.listParticipants(entry.task_id);
+      const targets = resolveExplicitTargets(conversationInput.body, participants, conversationInput.metadata);
+      if (targets.length > 0) {
+        this.runtimeThreadMessageRouter.dispatch({
+          task_id: entry.task_id,
+          provider: conversationInput.provider,
+          thread_ref: conversationInput.thread_ref ?? null,
+          conversation_ref: conversationInput.conversation_ref ?? null,
+          entry_id: entry.id,
+          body: conversationInput.body,
+          author_ref: conversationInput.author_ref ?? null,
+          display_name: conversationInput.display_name ?? null,
+          participants: targets,
+        });
+      }
     }
     if (!task_action) {
       return { entry, task_action_result: null };
@@ -145,4 +172,43 @@ export class TaskInboundService {
       }
     }
   }
+}
+
+function resolveExplicitTargets<T extends { agent_ref: string }>(
+  body: string,
+  participants: T[],
+  metadata?: Record<string, unknown> | null,
+): T[] {
+  const mentions = [...extractMentions(body), ...extractMetadataMentions(metadata)];
+  if (mentions.length === 0) {
+    return [];
+  }
+  const mentionSet = new Set(mentions.map((value) => value.toLowerCase()));
+  return participants.filter((participant) => {
+    const agentRef = participant.agent_ref;
+    if (mentionSet.has(agentRef.toLowerCase())) {
+      return true;
+    }
+    const short = agentRef.split(':').pop() ?? agentRef;
+    return mentionSet.has(short.toLowerCase());
+  });
+}
+
+function extractMentions(body: string) {
+  const matches = body.match(/@([A-Za-z0-9:_-]+)/g);
+  if (!matches) {
+    return [];
+  }
+  return matches.map((value) => value.slice(1)).filter((value) => value.length > 0);
+}
+
+function extractMetadataMentions(metadata?: Record<string, unknown> | null) {
+  const explicitMentions = metadata?.explicit_mentions;
+  if (!Array.isArray(explicitMentions)) {
+    return [];
+  }
+  return explicitMentions
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
 }

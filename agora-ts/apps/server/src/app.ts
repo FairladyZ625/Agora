@@ -70,11 +70,14 @@ import {
   createProjectMembershipSchema,
   createInboxRequestSchema,
   createProjectRequestSchema,
+  ensureProjectImSpaceRequestSchema,
   createTaskRequestSchema,
   createSubtasksRequestSchema,
   createTaskContextBindingRequestSchema,
   orchestratorDirectCreateRequestSchema,
   currentImTaskApproveRequestSchema,
+  currentImContextResolveRequestSchema,
+  currentImContextResolveResponseSchema,
   currentImTaskRejectRequestSchema,
   ingestTaskConversationEntryRequestSchema,
   projectContextMaterializeRequestSchema,
@@ -125,6 +128,7 @@ import {
   PermissionDeniedError,
   type DashboardQueryService,
   type HumanAccountService,
+  type IMProvisioningPort,
   type InboxService,
   type LiveSessionStore,
   type NotificationDispatcher,
@@ -162,6 +166,23 @@ import {
   type AgoraDatabase,
 } from '@agora-ts/db';
 
+type CcConnectThreadSessionServiceLike = {
+  ensureSessionBinding(input: {
+    agentRef: string;
+    provider: string;
+    threadRef: string;
+    participantBindingId: string;
+    sessionName: string | null;
+  }): Promise<unknown>;
+  deliverText(input: {
+    agentRef: string;
+    provider: string;
+    threadRef: string;
+    participantBindingId: string;
+    message: string;
+  }): Promise<unknown>;
+};
+
 export interface BuildAppOptions {
   db?: AgoraDatabase;
   taskService?: TaskService;
@@ -176,6 +197,7 @@ export interface BuildAppOptions {
   dashboardQueryService?: DashboardQueryService;
   ccConnectInspectionService?: CcConnectInspectionService;
   ccConnectManagementService?: CcConnectManagementService;
+  ccConnectThreadSessionService?: CcConnectThreadSessionServiceLike;
   inboxService?: InboxService;
   templateAuthoringService?: TemplateAuthoringService;
   liveSessionStore?: LiveSessionStore;
@@ -192,6 +214,7 @@ export interface BuildAppOptions {
   taskInboundService?: TaskInboundService;
   taskParticipationService?: TaskParticipationService;
   notificationDispatcher?: NotificationDispatcher;
+  imProvisioningPort?: IMProvisioningPort;
   humanAccountService?: HumanAccountService;
   apiAuth?: {
     enabled: boolean;
@@ -943,6 +966,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   const dashboardQueryService = options.dashboardQueryService;
   const ccConnectInspectionService = options.ccConnectInspectionService ?? new CcConnectInspectionService();
   const ccConnectManagementService = options.ccConnectManagementService ?? new CcConnectManagementService();
+  const ccConnectThreadSessionService = options.ccConnectThreadSessionService;
   const inboxService = options.inboxService;
   const templateAuthoringService = options.templateAuthoringService;
   const liveSessionStore = options.liveSessionStore;
@@ -952,6 +976,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   const taskConversationService = options.taskConversationService;
   const taskInboundService = options.taskInboundService;
   const notificationDispatcher = options.notificationDispatcher;
+  const imProvisioningPort = options.imProvisioningPort;
   const apiAuth = options.apiAuth;
   const dashboardAuth = options.dashboardAuth;
   const humanAccountService = options.humanAccountService;
@@ -1620,6 +1645,40 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  if (ccConnectThreadSessionService) {
+    app.post('/api/external-bridges/cc-connect/thread-sessions/ensure', async (request, reply) => {
+      try {
+        const body = request.body as Record<string, unknown>;
+        return reply.send(await ccConnectThreadSessionService.ensureSessionBinding({
+          agentRef: requireNonEmptyString(body.agent_ref, 'agent_ref'),
+          provider: optionalNonEmptyString(body.provider) ?? 'discord',
+          threadRef: requireNonEmptyString(body.thread_ref, 'thread_ref'),
+          participantBindingId: requireNonEmptyString(body.participant_binding_id, 'participant_binding_id'),
+          sessionName: optionalNonEmptyString(body.session_name) ?? null,
+        }));
+      } catch (error) {
+        const translated = translateError(error);
+        return reply.status(translated.statusCode).send(translated.body);
+      }
+    });
+
+    app.post('/api/external-bridges/cc-connect/thread-sessions/deliver', async (request, reply) => {
+      try {
+        const body = request.body as Record<string, unknown>;
+        return reply.send(await ccConnectThreadSessionService.deliverText({
+          agentRef: requireNonEmptyString(body.agent_ref, 'agent_ref'),
+          provider: optionalNonEmptyString(body.provider) ?? 'discord',
+          threadRef: requireNonEmptyString(body.thread_ref, 'thread_ref'),
+          participantBindingId: requireNonEmptyString(body.participant_binding_id, 'participant_binding_id'),
+          message: requireNonEmptyString(body.message, 'message'),
+        }));
+      } catch (error) {
+        const translated = translateError(error);
+        return reply.status(translated.statusCode).send(translated.body);
+      }
+    });
+  }
+
   if (dashboardDir && existsSync(dashboardDir)) {
     app.get('/dashboard', async (request, reply) => {
       if (!requireDashboardAccess(request, reply, dashboardAuth, dashboardSessions)) {
@@ -2077,6 +2136,55 @@ export function buildApp(options: BuildAppOptions = {}) {
         });
       }
       return reply.send(projectService.requireProject(project.id));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/im-space/ensure', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    if (!imProvisioningPort?.ensureProjectSpace) {
+      return reply.status(503).send({ message: 'IM project space provisioning is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      const payload = ensureProjectImSpaceRequestSchema.parse(request.body ?? {});
+      const project = projectService.requireProject(params.projectId);
+      const existing = projectService.getProjectImSpace(project.id, payload.provider);
+      const ensured = existing && !payload.conversation_ref && !payload.parent_ref
+        ? {
+            im_provider: payload.provider,
+            conversation_ref: existing.conversation_ref,
+            parent_ref: existing.parent_ref ?? null,
+            kind: existing.kind ?? null,
+            managed_by: existing.managed_by ?? null,
+          }
+        : await imProvisioningPort.ensureProjectSpace({
+            project_id: project.id,
+            project_name: project.name,
+            target: {
+              provider: payload.provider,
+              ...(payload.conversation_ref ? { conversation_ref: payload.conversation_ref } : {}),
+              ...(payload.parent_ref ? { parent_ref: payload.parent_ref } : {}),
+            },
+          });
+      projectService.upsertProjectImSpace(project.id, {
+        provider: ensured.im_provider,
+        conversation_ref: ensured.conversation_ref,
+        ...(ensured.parent_ref ? { parent_ref: ensured.parent_ref } : {}),
+        ...(ensured.kind ? { kind: ensured.kind } : {}),
+        ...(ensured.managed_by ? { managed_by: ensured.managed_by } : {}),
+      });
+      return reply.send({
+        provider: ensured.im_provider,
+        conversation_ref: ensured.conversation_ref,
+        parent_ref: ensured.parent_ref ?? null,
+        kind: ensured.kind ?? null,
+        managed_by: ensured.managed_by ?? null,
+      });
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -3316,6 +3424,73 @@ export function buildApp(options: BuildAppOptions = {}) {
           reason: typeof translated.body?.message === 'string' ? translated.body.message : null,
         });
       }
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/im/contexts/resolve', async (request, reply) => {
+    if (!taskService || !taskContextBindingService || !projectService) {
+      return reply.status(503).send({ message: 'Task/project services are not configured' });
+    }
+    try {
+      const payload = currentImContextResolveRequestSchema.parse(request.body);
+      const binding = taskContextBindingService.findLatestBindingByRefs({
+        provider: payload.provider,
+        thread_ref: payload.thread_ref ?? null,
+        conversation_ref: payload.conversation_ref ?? null,
+      });
+      if (binding) {
+        const task = taskService.getTask(binding.task_id);
+        const project = task?.project_id ? projectService.getProject(task.project_id) : null;
+        const projectSpace = project ? projectService.getProjectImSpace(project.id, payload.provider) : null;
+        return reply.send(currentImContextResolveResponseSchema.parse({
+          managed: true,
+          scope: 'task_thread',
+          binding_id: binding.id,
+          project: project && projectSpace
+            ? {
+                id: project.id,
+                name: project.name,
+                conversation_ref: projectSpace.conversation_ref,
+                parent_ref: projectSpace.parent_ref ?? null,
+                kind: projectSpace.kind ?? null,
+                managed_by: projectSpace.managed_by ?? null,
+              }
+            : null,
+          task: task
+            ? {
+                id: task.id,
+                title: task.title,
+                state: task.state,
+                current_stage: task.current_stage,
+                project_id: task.project_id ?? null,
+              }
+            : null,
+        }));
+      }
+
+      const project = payload.conversation_ref
+        ? projectService.findProjectByImSpace(payload.provider, payload.conversation_ref)
+        : null;
+      const projectSpace = project ? projectService.getProjectImSpace(project.id, payload.provider) : null;
+      return reply.send(currentImContextResolveResponseSchema.parse({
+        managed: Boolean(project && projectSpace),
+        scope: project && projectSpace ? 'project_space' : 'none',
+        binding_id: null,
+        project: project && projectSpace
+          ? {
+              id: project.id,
+              name: project.name,
+              conversation_ref: projectSpace.conversation_ref,
+              parent_ref: projectSpace.parent_ref ?? null,
+              kind: projectSpace.kind ?? null,
+              managed_by: projectSpace.managed_by ?? null,
+            }
+          : null,
+        task: null,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
     }
   });
@@ -4624,4 +4799,20 @@ function resolvePathWithinDirectory(baseDir: string, relativePath: string) {
     return resolvedPath;
   }
   return null;
+}
+
+function optionalNonEmptyString(value: unknown) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function requireNonEmptyString(value: unknown, field: string) {
+  const parsed = optionalNonEmptyString(value);
+  if (!parsed) {
+    throw new Error(`${field} is required`);
+  }
+  return parsed;
 }

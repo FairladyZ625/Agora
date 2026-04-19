@@ -24,6 +24,14 @@ export interface CreateProjectInput {
   default_agents?: CreateProjectAgentRosterEntryDto[] | undefined;
 }
 
+export interface ProjectImSpaceBinding {
+  provider: string;
+  conversation_ref: string;
+  parent_ref?: string | null;
+  kind?: string | null;
+  managed_by?: string | null;
+}
+
 export interface ProjectServiceOptions {
   projectRepository: IProjectRepository;
   taskRepository: ITaskRepository;
@@ -142,6 +150,28 @@ export class ProjectService {
   updateProjectMetadata(projectId: string, metadata: Record<string, unknown> | null): ProjectRecord {
     this.requireProject(projectId);
     return this.projects.updateProject(projectId, { metadata });
+  }
+
+  getProjectImSpace(projectId: string, provider: string): ProjectImSpaceBinding | null {
+    const project = this.requireProject(projectId);
+    return extractProjectImSpace(project, provider);
+  }
+
+  findProjectByImSpace(provider: string, conversationRef: string): ProjectRecord | null {
+    const items = this.projects.listProjects('active');
+    for (const project of items) {
+      const binding = extractProjectImSpace(project, provider);
+      if (binding?.conversation_ref === conversationRef) {
+        return project;
+      }
+    }
+    return null;
+  }
+
+  upsertProjectImSpace(projectId: string, binding: ProjectImSpaceBinding): ProjectRecord {
+    const project = this.requireProject(projectId);
+    const nextMetadata = mergeProjectImSpace(project.metadata, normalizeProjectImSpace(binding));
+    return this.projects.updateProject(projectId, { metadata: nextMetadata });
   }
 
   listProjects(status?: string): ProjectRecord[] {
@@ -323,4 +353,58 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
+}
+
+function extractProjectImSpace(project: ProjectRecord, provider: string): ProjectImSpaceBinding | null {
+  const root = asRecord(project.metadata);
+  const agora = asRecord(root?.agora);
+  const imSpaces = asRecord(agora?.im_spaces);
+  const binding = asRecord(imSpaces?.[provider]);
+  if (!binding) {
+    return null;
+  }
+  if (typeof binding.conversation_ref !== 'string' || binding.conversation_ref.length === 0) {
+    return null;
+  }
+  return {
+    provider,
+    conversation_ref: binding.conversation_ref,
+    ...(typeof binding.parent_ref === 'string' && binding.parent_ref.length > 0 ? { parent_ref: binding.parent_ref } : {}),
+    ...(typeof binding.kind === 'string' && binding.kind.length > 0 ? { kind: binding.kind } : {}),
+    ...(typeof binding.managed_by === 'string' && binding.managed_by.length > 0 ? { managed_by: binding.managed_by } : {}),
+  };
+}
+
+function normalizeProjectImSpace(binding: ProjectImSpaceBinding): ProjectImSpaceBinding {
+  return {
+    provider: binding.provider,
+    conversation_ref: binding.conversation_ref,
+    ...(binding.parent_ref ? { parent_ref: binding.parent_ref } : {}),
+    ...(binding.kind ? { kind: binding.kind } : {}),
+    ...(binding.managed_by ? { managed_by: binding.managed_by } : {}),
+  };
+}
+
+function mergeProjectImSpace(
+  metadata: Record<string, unknown> | null | undefined,
+  binding: ProjectImSpaceBinding,
+): Record<string, unknown> {
+  const root = asRecord(metadata) ?? {};
+  const agora = asRecord(root.agora) ?? {};
+  const imSpaces = asRecord(agora.im_spaces) ?? {};
+  return {
+    ...root,
+    agora: {
+      ...agora,
+      im_spaces: {
+        ...imSpaces,
+        [binding.provider]: {
+          conversation_ref: binding.conversation_ref,
+          parent_ref: binding.parent_ref ?? null,
+          kind: binding.kind ?? null,
+          managed_by: binding.managed_by ?? null,
+        },
+      },
+    },
+  };
 }

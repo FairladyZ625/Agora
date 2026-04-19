@@ -179,6 +179,70 @@ describe('DiscordHttpClient', () => {
     vi.unstubAllGlobals();
   });
 
+  it('getChannel reads guild and parent metadata', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'channel-7', guild_id: 'guild-1', parent_id: 'category-9', type: 0 }),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const client = new DiscordHttpClient({ botToken: 'tok' });
+    await expect(client.getChannel('channel-7')).resolves.toEqual({
+      id: 'channel-7',
+      guild_id: 'guild-1',
+      parent_id: 'category-9',
+      type: 0,
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  it('createForumChannel creates a guild forum channel and returns its id', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'forum-42' }),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const client = new DiscordHttpClient({ botToken: 'tok' });
+    await expect(client.createForumChannel('guild-1', 'Project Alpha', 'category-7')).resolves.toBe('forum-42');
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://discord.com/api/v10/guilds/guild-1/channels',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ name: 'Project Alpha', type: 15, parent_id: 'category-7' }),
+      }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('denyViewChannelForUser writes a member-specific deny overwrite', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => '',
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const client = new DiscordHttpClient({ botToken: 'tok' });
+    await expect(client.denyViewChannelForUser('forum-42', '1491781344664227942')).resolves.toBeUndefined();
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://discord.com/api/v10/channels/forum-42/permissions/1491781344664227942',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          type: 1,
+          allow: '0',
+          deny: '1024',
+        }),
+      }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
   it('archiveThread patches the channel as archived and locked', async () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
     vi.stubGlobal('fetch', mockFetch);
@@ -295,6 +359,57 @@ describe('DiscordIMProvisioningAdapter', () => {
     );
     expect(result.conversation_ref).toBe('chan-private');
     expect(result.thread_ref).toBe('private-thread-789');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('ensureProjectSpace creates a forum channel under the default channel parent when no space exists', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'default-channel', guild_id: 'guild-1', parent_id: 'category-9', type: 0 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'forum-123' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => '',
+      });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'tok',
+      defaultChannelId: 'default-channel',
+      excludedUserIds: ['1491781344664227942'],
+    });
+    const result = await adapter.ensureProjectSpace({
+      project_id: 'proj-alpha',
+      project_name: 'Project Alpha',
+      target: { provider: 'discord' },
+    });
+
+    expect(result).toEqual({
+      im_provider: 'discord',
+      conversation_ref: 'forum-123',
+      parent_ref: 'category-9',
+      kind: 'forum_channel',
+      managed_by: 'agora',
+    });
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      3,
+      'https://discord.com/api/v10/channels/forum-123/permissions/1491781344664227942',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          type: 1,
+          allow: '0',
+          deny: '1024',
+        }),
+      }),
+    );
 
     vi.unstubAllGlobals();
   });

@@ -273,6 +273,8 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   }, options.factories);
   const { taskService } = composition;
   composition.discordPresenceService?.start();
+  composition.discordThreadIngressService?.start();
+  composition.ccConnectBridgeRuntimeService?.start();
   if (config.scheduler.startup_recovery_on_boot) {
     taskService.startupRecoveryScan();
   }
@@ -302,6 +304,8 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   });
   const dispose = () => {
     composition.ccConnectSessionMirrorService?.stop();
+    composition.ccConnectBridgeRuntimeService?.stop();
+    composition.discordThreadIngressService?.stop();
     composition.discordPresenceService?.stop();
     observationScheduler.stop();
   };

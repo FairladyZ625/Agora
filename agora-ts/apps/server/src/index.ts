@@ -19,6 +19,7 @@ export function createAppFromRuntime(runtime: ReturnType<typeof createServerRunt
     legacyRuntimeService: runtime.legacyRuntimeService,
     taskContextBindingService: runtime.taskContextBindingService,
     taskConversationService: runtime.taskConversationService,
+    taskInboundService: runtime.taskInboundService,
     taskParticipationService: runtime.taskParticipationService,
     humanAccountService: runtime.humanAccountService,
     notificationDispatcher: runtime.notificationDispatcher,
@@ -31,6 +32,7 @@ export function createAppFromRuntime(runtime: ReturnType<typeof createServerRunt
       structuredLogs: runtime.observability.structured_logs,
       backgroundMetrics: runtime.observationScheduler,
     },
+    ...(runtime.imProvisioningPort ? { imProvisioningPort: runtime.imProvisioningPort } : {}),
     ...(runtime.dashboardDir ? { dashboardDir: runtime.dashboardDir } : {}),
   });
   app.addHook('onClose', async () => {

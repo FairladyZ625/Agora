@@ -7,3 +7,10 @@ export { CcConnectSessionMirrorService } from './session-mirror.js';
 export type { CcConnectSessionMirrorServiceOptions, CcConnectSessionSummary } from './session-mirror.js';
 export { loadCcConnectProjectTargets, parseCcConnectConfigPaths } from './config-targets.js';
 export type { CcConnectProjectTarget } from './config-targets.js';
+export { CcConnectBridgeClient } from './cc-connect-bridge-client.js';
+export type {
+  CcConnectBridgeClientOptions,
+  CcConnectBridgeConnectInput,
+  CcConnectBridgeEvent,
+  CcConnectBridgeMessageInput,
+} from './cc-connect-bridge-client.js';

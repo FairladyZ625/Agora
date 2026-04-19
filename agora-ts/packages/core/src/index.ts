@@ -32,9 +32,11 @@ export type {
   CcConnectProjectSettings,
   CcConnectProjectSummary,
   CcConnectSendMessageReceipt,
+  CcConnectSessionCreateReceipt,
   CcConnectSessionDetail,
   CcConnectSessionMessage,
   CcConnectSessionSummary,
+  CcConnectSessionSwitchReceipt,
   CcConnectBridgeAdapterSummary,
   CcConnectManagementInput,
 } from './cc-connect-management-service.js';
@@ -96,9 +98,12 @@ export { HumanAccountService } from './human-account-service.js';
 export type {
   IMArchiveContextRequest,
   IMContextTarget,
+  IMEnsureProjectSpaceRequest,
+  IMEnsureProjectSpaceResult,
   IMJoinParticipantRequest,
   IMJoinParticipantResult,
   IMMessagingPort,
+  IMProjectSpaceTarget,
   IMPublishMessageInput,
   IMPublishMessagesRequest,
   IMProvisionContextRequest,
@@ -227,7 +232,7 @@ export type { ContextHarvestServiceOptions } from './context-harvest-service.js'
 export { ContextHarvestService } from './context-harvest-service.js';
 export type { BuildContextLifecycleSnapshotInput, ContextLifecycleEngineOptions } from './context-lifecycle-engine.js';
 export { ContextLifecycleEngine } from './context-lifecycle-engine.js';
-export type { CreateProjectInput, ProjectServiceOptions } from './project-service.js';
+export type { CreateProjectInput, ProjectImSpaceBinding, ProjectServiceOptions } from './project-service.js';
 export { ProjectService } from './project-service.js';
 export type { EnsureCanonicalProjectRootOptions } from './project-state-root.js';
 export { ensureCanonicalProjectRoot, ensureCanonicalProjectRootBootstrapCommit } from './project-state-root.js';
@@ -252,6 +257,8 @@ export {
   CompositePresenceSource,
   InventoryBackedAgentRuntimePort,
 } from './runtime-ports.js';
+export { RuntimeThreadMessageRouter } from './runtime-message-ports.js';
+export type { RuntimeThreadMessageInput, RuntimeThreadMessagePort, RuntimeThreadRoutingInput } from './runtime-message-ports.js';
 export type { RuntimeRecoveryPort } from './runtime-recovery-port.js';
 export type { ListSkillsInput, SkillCatalogEntry, SkillCatalogPort } from './skill-catalog-port.js';
 export { StageRosterService } from './stage-roster-service.js';
@@ -297,7 +304,7 @@ export type { TaskLifecycleServiceOptions } from './task-lifecycle-service.js';
 export { TaskLifecycleService } from './task-lifecycle-service.js';
 export type { TaskParticipantSyncServiceOptions } from './task-participant-sync-service.js';
 export { TaskParticipantSyncService } from './task-participant-sync-service.js';
-export type { ParticipantExposureStateInput, TaskParticipationServiceOptions } from './task-participation-service.js';
+export type { BindRuntimeSessionInput, ParticipantExposureStateInput, TaskParticipationServiceOptions } from './task-participation-service.js';
 export { TaskParticipationService } from './task-participation-service.js';
 export type { TaskRecoveryServiceOptions } from './task-recovery-service.js';
 export { TaskRecoveryService } from './task-recovery-service.js';

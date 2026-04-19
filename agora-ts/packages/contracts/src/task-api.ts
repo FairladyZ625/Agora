@@ -558,6 +558,49 @@ export const currentImTaskRejectRequestSchema = z.object({
 });
 export type CurrentImTaskRejectRequestDto = z.infer<typeof currentImTaskRejectRequestSchema>;
 
+export const currentImContextResolveRequestSchema = z.object({
+  provider: z.string().min(1).default('discord'),
+  thread_ref: z.string().min(1).optional(),
+  conversation_ref: z.string().min(1).optional(),
+}).superRefine((value, ctx) => {
+  if (!value.thread_ref && !value.conversation_ref) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'thread_ref or conversation_ref is required',
+      path: ['thread_ref'],
+    });
+  }
+});
+export type CurrentImContextResolveRequestDto = z.infer<typeof currentImContextResolveRequestSchema>;
+
+export const currentImContextResolvedProjectSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  conversation_ref: z.string().min(1),
+  parent_ref: z.string().nullable(),
+  kind: z.string().nullable(),
+  managed_by: z.string().nullable(),
+});
+export type CurrentImContextResolvedProjectDto = z.infer<typeof currentImContextResolvedProjectSchema>;
+
+export const currentImContextResolvedTaskSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  state: z.string().min(1),
+  current_stage: z.string().nullable(),
+  project_id: z.string().nullable(),
+});
+export type CurrentImContextResolvedTaskDto = z.infer<typeof currentImContextResolvedTaskSchema>;
+
+export const currentImContextResolveResponseSchema = z.object({
+  managed: z.boolean(),
+  scope: z.enum(['none', 'project_space', 'task_thread']),
+  binding_id: z.string().nullable(),
+  project: currentImContextResolvedProjectSchema.nullable(),
+  task: currentImContextResolvedTaskSchema.nullable(),
+});
+export type CurrentImContextResolveResponseDto = z.infer<typeof currentImContextResolveResponseSchema>;
+
 export const confirmTaskRequestSchema = z.object({
   voter_id: z.string().min(1),
   vote: z.enum(['approve', 'reject']),

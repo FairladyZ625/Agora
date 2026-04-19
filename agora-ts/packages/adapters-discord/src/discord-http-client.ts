@@ -4,6 +4,7 @@ import { resolveDiscordProxyEnvironment } from './proxy-support.js';
 const DISCORD_API = 'https://discord.com/api/v10';
 const DISCORD_MESSAGE_CONTENT_LIMIT = 2000;
 const DISCORD_SEND_MESSAGE_MAX_ATTEMPTS = 5;
+const DISCORD_PERMISSION_VIEW_CHANNEL = 1n << 10n;
 
 export interface DiscordClientOptions {
   botToken: string;
@@ -12,6 +13,14 @@ export interface DiscordClientOptions {
 export interface DiscordCurrentUser {
   id: string;
   username?: string;
+}
+
+export interface DiscordChannel {
+  id: string;
+  guild_id?: string;
+  parent_id?: string | null;
+  type?: number;
+  name?: string;
 }
 
 export interface DiscordThreadMember {
@@ -67,6 +76,56 @@ export class DiscordHttpClient {
     }
     const data = (await res.json()) as { id: string };
     return data.id;
+  }
+
+  async getChannel(channelId: string): Promise<DiscordChannel> {
+    const res = await fetch(`${DISCORD_API}/channels/${channelId}`, {
+      method: 'GET',
+      headers: this.headers,
+      ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Discord getChannel failed: ${res.status} ${body}`);
+    }
+    return (await res.json()) as DiscordChannel;
+  }
+
+  async createForumChannel(guildId: string, name: string, parentId?: string | null): Promise<string> {
+    const res = await fetch(`${DISCORD_API}/guilds/${guildId}/channels`, {
+      method: 'POST',
+      headers: this.headers,
+      ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+      body: JSON.stringify({
+        name,
+        type: 15,
+        ...(parentId ? { parent_id: parentId } : {}),
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Discord createForumChannel failed: ${res.status} ${body}`);
+    }
+    const data = (await res.json()) as { id: string };
+    return data.id;
+  }
+
+  async denyViewChannelForUser(channelId: string, userId: string): Promise<void> {
+    const deny = DISCORD_PERMISSION_VIEW_CHANNEL.toString();
+    const res = await fetch(`${DISCORD_API}/channels/${channelId}/permissions/${userId}`, {
+      method: 'PUT',
+      headers: this.headers,
+      ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+      body: JSON.stringify({
+        type: 1,
+        allow: '0',
+        deny,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Discord denyViewChannelForUser failed: ${res.status} ${body}`);
+    }
   }
 
   async sendMessage(channelId: string, content: string): Promise<void> {
