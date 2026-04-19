@@ -11,6 +11,7 @@ const TASK_SUBCOMMANDS = new Set([
   "create",
   "list",
   "status",
+  "context",
   "advance",
   "approve",
   "reject",
@@ -71,6 +72,11 @@ export function registerTaskCommands(
             return await handleList(bridge, rest);
           case "status":
             return await handleStatus(bridge, rest);
+          case "context":
+            if (!looksLikeTaskId(rest[0]) && (ctx.threadId || ctx.channelId || ctx.conversationId)) {
+              return await handleContextFromThread(bridge, rest, ctx);
+            }
+            return await handleContext(bridge, rest);
           case "advance":
             return await handleAdvance(bridge, rest, senderId);
           case "approve":
@@ -270,6 +276,66 @@ async function handleStatus(bridge: AgoraBridge, args: string[]): Promise<Comman
   return {
     text: `${task.id} | ${task.state} | ${task.current_stage}\nflow_log=${flowCount}, subtasks=${subtaskCount}`,
   };
+}
+
+async function handleContext(bridge: AgoraBridge, args: string[]): Promise<CommandResult> {
+  const taskId = args[0];
+  if (!taskId) {
+    return { text: "Usage: /task context <task_id> [controller|citizen|craftsman]" };
+  }
+  const rawAudience = args[1];
+  const audience = rawAudience === "citizen" || rawAudience === "craftsman" ? rawAudience : "controller";
+  const delivery = await bridge.getTaskContextDelivery({
+    taskId,
+    audience,
+  });
+  const referenceCount = delivery.delivery.reference_bundle?.references.length ?? 0;
+  const routingCount = delivery.delivery.attention_routing_plan?.routes.length ?? 0;
+  const lines = [
+    `${taskId} | ${audience}`,
+    `references=${referenceCount}`,
+    `routing=${routingCount}`,
+  ];
+  if (delivery.delivery.runtime_delivery?.manifest_path) {
+    lines.push(`manifest: ${delivery.delivery.runtime_delivery.manifest_path}`);
+  }
+  return { text: lines.join("\n") };
+}
+
+async function handleContextFromThread(
+  bridge: AgoraBridge,
+  args: string[],
+  ctx: { threadId?: string; conversationId?: string; channelId?: string; provider?: string; from?: string },
+): Promise<CommandResult> {
+  const rawAudience = args[0];
+  const audience = rawAudience === "citizen" || rawAudience === "craftsman" ? rawAudience : "controller";
+  const provider = resolveProvider(ctx);
+  const threadRef = ctx.threadId ?? ctx.channelId;
+  const conversationRef = ctx.conversationId;
+  if (!provider) {
+    return { text: "Provider context is required for current-thread /task context" };
+  }
+  if (!threadRef && !conversationRef) {
+    return { text: "Thread or conversation context is required for current-thread /task context" };
+  }
+  const delivery = await bridge.getCurrentTaskContextDelivery({
+    provider,
+    threadRef,
+    conversationRef,
+    audience,
+  });
+  const taskId = delivery.delivery.runtime_delivery?.task_id ?? "current";
+  const referenceCount = delivery.delivery.reference_bundle?.references.length ?? 0;
+  const routingCount = delivery.delivery.attention_routing_plan?.routes.length ?? 0;
+  const lines = [
+    `${taskId} | ${audience}`,
+    `references=${referenceCount}`,
+    `routing=${routingCount}`,
+  ];
+  if (delivery.delivery.runtime_delivery?.manifest_path) {
+    lines.push(`manifest: ${delivery.delivery.runtime_delivery.manifest_path}`);
+  }
+  return { text: lines.join("\n") };
 }
 
 async function handleAdvance(bridge: AgoraBridge, args: string[], senderId: string): Promise<CommandResult> {
@@ -481,6 +547,7 @@ function formatHelpWithContext(ctx?: { threadId?: string; conversationId?: strin
       "You are in a task thread.",
       "Most relevant here:",
       "- /task status <task_id>",
+      "- /task context [task_id] [controller|citizen|craftsman]",
       "- /task approve [comment]",
       "- /task reject [reason]",
       "- /task advance <task_id>",
@@ -506,6 +573,7 @@ function formatHelpWithContext(ctx?: { threadId?: string; conversationId?: strin
     "- /task create <title> [type]",
     "- /task list [state]",
     "- /task status <task_id>",
+    "- /task context [task_id] [controller|citizen|craftsman]",
     "- /task advance <task_id>",
     "- /task approve [task_id] [comment]",
     "- /task reject [task_id] [reason]",

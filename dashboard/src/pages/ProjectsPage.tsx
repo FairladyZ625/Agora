@@ -532,7 +532,7 @@ export function ProjectsPage() {
                 <Link to={`/projects/${previewProject.project.id}`} className="button-primary">
                   {copy.openProjectWorkspaceAction}
                 </Link>
-                <Link to={`/projects/${previewProject.project.id}/brain`} className="button-secondary">
+                <Link to={`/projects/${previewProject.project.id}/context`} className="button-secondary">
                   {copy.openBrainAction}
                 </Link>
                 <Link to="/tasks/new" className="button-secondary">

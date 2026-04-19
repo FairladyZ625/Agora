@@ -1,7 +1,9 @@
+import { join } from 'node:path';
 import type { WorkflowStageRosterDto } from '@agora-ts/contracts';
 
 export type TaskBrainContextAudience = 'controller' | 'citizen' | 'craftsman';
 export const TASK_BRAIN_RUNTIME_DELIVERY_MANIFEST_RELATIVE_PATH = '04-context/runtime-delivery-manifest.md';
+export const TASK_BRAIN_PROJECT_CONTEXT_ARTIFACT_DIRECTORY = '04-context';
 
 export interface TaskBrainContextArtifact {
   audience: TaskBrainContextAudience;
@@ -129,4 +131,15 @@ export interface TaskBrainWorkspacePort {
   writeTaskCloseRecap(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainCloseRecapRequest): void;
   writeTaskHarvestDraft(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainHarvestDraftRequest): void;
   destroyWorkspace(binding: TaskBrainWorkspaceBindingRef): void;
+}
+
+export function resolveTaskBrainRuntimeDeliveryManifestPath(workspacePath: string) {
+  return join(workspacePath, TASK_BRAIN_RUNTIME_DELIVERY_MANIFEST_RELATIVE_PATH);
+}
+
+export function resolveTaskBrainProjectContextArtifactPath(
+  workspacePath: string,
+  audience: TaskBrainContextAudience,
+) {
+  return join(workspacePath, TASK_BRAIN_PROJECT_CONTEXT_ARTIFACT_DIRECTORY, `project-context-${audience}.md`);
 }

@@ -107,9 +107,9 @@ describe('task mappers', () => {
         entry_nodes: ['discuss'],
         controller_ref: 'opus',
         nodes: [
-          { id: 'discuss', name: '方案讨论', mode: 'discuss', gate_type: 'archon_review' },
-          { id: 'develop', name: '并行开发', mode: 'execute', gate_type: 'all_subtasks_done' },
-          { id: 'review', name: '合并审查', mode: 'discuss', gate_type: 'archon_review' },
+          { id: 'discuss', kind: 'stage', name: '方案讨论', mode: 'discuss', gate_type: 'archon_review' },
+          { id: 'develop', kind: 'stage', name: '并行开发', mode: 'execute', gate_type: 'all_subtasks_done' },
+          { id: 'review', kind: 'stage', name: '合并审查', mode: 'discuss', gate_type: 'archon_review' },
         ],
         edges: [
           { from: 'discuss', to: 'develop', kind: 'advance' },

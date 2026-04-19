@@ -8,6 +8,7 @@ export function createAppFromRuntime(runtime: ReturnType<typeof createServerRunt
     taskService: runtime.taskService,
     projectService: runtime.projectService,
     projectBrainService: runtime.projectBrainService,
+    projectContextDeliveryService: runtime.projectContextDeliveryService,
     contextRetrievalService: runtime.contextRetrievalService,
     contextMaterializationService: runtime.contextMaterializationService,
     projectBrainDoctorService: runtime.projectBrainDoctorService,

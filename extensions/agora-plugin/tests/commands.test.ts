@@ -198,6 +198,7 @@ describe("registerTaskCommands", () => {
 
   it.each([
     ["status", "Usage: /task status <task_id>"],
+    ["context", "Usage: /task context <task_id> [controller|citizen|craftsman]"],
     ["advance", "Usage: /task advance <task_id>"],
     ["approve", "Usage: /task approve [task_id] [comment]"],
     ["reject", "Usage: /task reject [task_id] [reason]"],
@@ -217,6 +218,127 @@ describe("registerTaskCommands", () => {
     const result = await getCommand().handler({ args: subcommand, senderId: "u1" });
 
     expect(result.text).toBe(expected);
+  });
+
+  it("reads unified task context delivery through the bridge", async () => {
+    const getTaskContextDelivery = vi.fn(async () => ({
+      scope: "project_context",
+      delivery: {
+        briefing: {
+          project_id: "proj-ctx",
+          audience: "craftsman",
+          markdown: "# Project Context Briefing\n\nStart from runtime boundary.",
+          source_documents: [],
+        },
+        reference_bundle: {
+          scope: "project_context",
+          mode: "bootstrap",
+          project_id: "proj-ctx",
+          task_id: "OC-200",
+          project_map: {
+            index_reference_key: "index:index",
+            timeline_reference_key: "timeline:timeline",
+            inventory_count: 1,
+          },
+          inventory: {
+            scope: "project_context",
+            project_id: "proj-ctx",
+            generated_at: "2026-04-15T00:00:00.000Z",
+            entries: [],
+          },
+          references: [
+            {
+              scope: "project_context",
+              reference_key: "decision:runtime-boundary",
+              project_id: "proj-ctx",
+              kind: "decision",
+              slug: "runtime-boundary",
+              title: "Runtime Boundary",
+              path: "/brain/projects/proj-ctx/knowledge/decisions/runtime-boundary.md",
+            },
+          ],
+        },
+        attention_routing_plan: {
+          scope: "project_context",
+          mode: "bootstrap",
+          project_id: "proj-ctx",
+          task_id: "OC-200",
+          audience: "craftsman",
+          summary: "Start from the project map.",
+          routes: [],
+        },
+        runtime_delivery: {
+          task_id: "OC-200",
+          task_title: "Implement hybrid retrieval",
+          workspace_path: "/tmp/proj-ctx/tasks/OC-200",
+          manifest_path: "/tmp/proj-ctx/tasks/OC-200/04-context/runtime-delivery-manifest.md",
+          artifact_paths: {
+            controller: "/tmp/proj-ctx/tasks/OC-200/04-context/project-context-controller.md",
+            citizen: "/tmp/proj-ctx/tasks/OC-200/04-context/project-context-citizen.md",
+            craftsman: "/tmp/proj-ctx/tasks/OC-200/04-context/project-context-craftsman.md",
+          },
+        },
+      },
+    }));
+    const { api, getCommand } = buildApi();
+    registerTaskCommands(api as any, { getTaskContextDelivery } as any, createPluginTrace(api as any));
+
+    const result = await getCommand().handler({ args: "context OC-200 craftsman", senderId: "u1" });
+
+    expect(getTaskContextDelivery).toHaveBeenCalledWith({
+      taskId: "OC-200",
+      audience: "craftsman",
+    });
+    expect(result.text).toContain("OC-200 | craftsman");
+    expect(result.text).toContain("references=1");
+    expect(result.text).toContain("routing=0");
+    expect(result.text).toContain("manifest: /tmp/proj-ctx/tasks/OC-200/04-context/runtime-delivery-manifest.md");
+  });
+
+  it("reads current-thread task context delivery through the bridge when task id is omitted", async () => {
+    const getCurrentTaskContextDelivery = vi.fn(async () => ({
+      scope: "project_context",
+      delivery: {
+        briefing: {
+          project_id: "proj-ctx",
+          audience: "controller",
+          markdown: "# Project Context Briefing",
+          source_documents: [],
+        },
+        reference_bundle: null,
+        attention_routing_plan: null,
+        runtime_delivery: {
+          task_id: "OC-201",
+          task_title: "Current thread task",
+          workspace_path: "/tmp/proj-ctx/tasks/OC-201",
+          manifest_path: "/tmp/proj-ctx/tasks/OC-201/04-context/runtime-delivery-manifest.md",
+          artifact_paths: {
+            controller: "/tmp/proj-ctx/tasks/OC-201/04-context/project-context-controller.md",
+            citizen: "/tmp/proj-ctx/tasks/OC-201/04-context/project-context-citizen.md",
+            craftsman: "/tmp/proj-ctx/tasks/OC-201/04-context/project-context-craftsman.md",
+          },
+        },
+      },
+    }));
+    const { api, getCommand } = buildApi();
+    registerTaskCommands(api as any, { getCurrentTaskContextDelivery } as any, createPluginTrace(api as any));
+
+    const result = await getCommand().handler({
+      args: "context craftsman",
+      senderId: "u1",
+      provider: "discord",
+      threadId: "thread-7",
+      conversationId: "channel-1",
+    });
+
+    expect(getCurrentTaskContextDelivery).toHaveBeenCalledWith({
+      provider: "discord",
+      threadRef: "thread-7",
+      conversationRef: "channel-1",
+      audience: "craftsman",
+    });
+    expect(result.text).toContain("OC-201 | craftsman");
+    expect(result.text).toContain("manifest: /tmp/proj-ctx/tasks/OC-201/04-context/runtime-delivery-manifest.md");
   });
 
   it("passes provider through direct task approve inside discord context", async () => {

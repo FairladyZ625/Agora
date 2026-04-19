@@ -558,6 +558,24 @@ export const currentImTaskRejectRequestSchema = z.object({
 });
 export type CurrentImTaskRejectRequestDto = z.infer<typeof currentImTaskRejectRequestSchema>;
 
+export const currentImTaskContextRequestSchema = z.object({
+  provider: z.string().min(1).default('discord'),
+  thread_ref: z.string().min(1).optional(),
+  conversation_ref: z.string().min(1).optional(),
+  audience: z.enum(['controller', 'citizen', 'craftsman']),
+  citizen_id: z.string().min(1).optional(),
+  allowed_citizen_ids: z.array(z.string().min(1)).optional(),
+}).superRefine((value, ctx) => {
+  if (!value.thread_ref && !value.conversation_ref) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'thread_ref or conversation_ref is required',
+      path: ['thread_ref'],
+    });
+  }
+});
+export type CurrentImTaskContextRequestDto = z.infer<typeof currentImTaskContextRequestSchema>;
+
 export const confirmTaskRequestSchema = z.object({
   voter_id: z.string().min(1),
   vote: z.enum(['approve', 'reject']),

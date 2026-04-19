@@ -147,6 +147,93 @@ describe("AgoraBridge", () => {
     );
   });
 
+  it("posts task-scoped project context delivery requests to the ts delivery facade", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      scope: "project_context",
+      delivery: {
+        briefing: {
+          project_id: "proj-ctx",
+          audience: "craftsman",
+          markdown: "# Project Context Briefing",
+          source_documents: [],
+        },
+        reference_bundle: null,
+        attention_routing_plan: null,
+        runtime_delivery: {
+          task_id: "OC-200",
+          task_title: "Implement hybrid retrieval",
+          workspace_path: "/tmp/proj-ctx/tasks/OC-200",
+          manifest_path: "/tmp/proj-ctx/tasks/OC-200/04-context/runtime-delivery-manifest.md",
+          artifact_paths: {
+            controller: "/tmp/proj-ctx/tasks/OC-200/04-context/project-context-controller.md",
+            citizen: "/tmp/proj-ctx/tasks/OC-200/04-context/project-context-citizen.md",
+            craftsman: "/tmp/proj-ctx/tasks/OC-200/04-context/project-context-craftsman.md",
+          },
+        },
+      },
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const bridge = new AgoraBridge("http://127.0.0.1:8420", "sec-token");
+    await bridge.getTaskContextDelivery({
+      taskId: "OC-200",
+      audience: "craftsman",
+      allowedCitizenIds: ["citizen-alpha"],
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8420/api/tasks/OC-200/context/delivery",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          audience: "craftsman",
+          allowed_citizen_ids: ["citizen-alpha"],
+        }),
+        headers: expect.objectContaining({
+          Authorization: "Bearer sec-token",
+          "Content-Type": "application/json",
+        }),
+      }),
+    );
+  });
+
+  it("posts current-thread task context delivery requests to the im-scoped delivery facade", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      scope: "project_context",
+      delivery: {
+        briefing: {
+          project_id: "proj-ctx",
+          audience: "controller",
+          markdown: "# Project Context Briefing",
+          source_documents: [],
+        },
+        reference_bundle: null,
+        attention_routing_plan: null,
+        runtime_delivery: null,
+      },
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const bridge = new AgoraBridge("http://127.0.0.1:8420");
+    await bridge.getCurrentTaskContextDelivery({
+      provider: "discord",
+      threadRef: "thread-7",
+      audience: "controller",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8420/api/im/tasks/current/context/delivery",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          provider: "discord",
+          thread_ref: "thread-7",
+          audience: "controller",
+        }),
+      }),
+    );
+  });
+
   it("posts runtime identity payloads to the ts craftsmen identity endpoint", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true, identity: {} }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);

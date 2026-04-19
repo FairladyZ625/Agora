@@ -11,6 +11,7 @@ import type {
   ListProjectsResponseDto,
   LiveSessionDto,
   ProjectDto,
+  ProjectContextDeliveryResponseDto,
   ProjectWorkbenchResponseDto,
   RejectTaskRequestDto,
   SubtaskDoneRequestDto,
@@ -325,6 +326,47 @@ export class AgoraBridge {
 
   async taskStatus(taskId: string): Promise<TaskStatusDto> {
     return this.request(`/api/tasks/${encodeURIComponent(taskId)}/status`);
+  }
+
+  async getTaskContextDelivery(input: {
+    taskId: string;
+    audience: "controller" | "citizen" | "craftsman";
+    citizenId?: string;
+    allowedCitizenIds?: string[];
+  }): Promise<ProjectContextDeliveryResponseDto> {
+    return this.request(`/api/tasks/${encodeURIComponent(input.taskId)}/context/delivery`, {
+      method: "POST",
+      body: {
+        audience: input.audience,
+        ...(input.citizenId !== undefined ? { citizen_id: input.citizenId } : {}),
+        ...(input.allowedCitizenIds && input.allowedCitizenIds.length > 0
+          ? { allowed_citizen_ids: input.allowedCitizenIds }
+          : {}),
+      },
+    });
+  }
+
+  async getCurrentTaskContextDelivery(input: {
+    provider?: string;
+    threadRef?: string;
+    conversationRef?: string;
+    audience: "controller" | "citizen" | "craftsman";
+    citizenId?: string;
+    allowedCitizenIds?: string[];
+  }): Promise<ProjectContextDeliveryResponseDto> {
+    return this.request("/api/im/tasks/current/context/delivery", {
+      method: "POST",
+      body: {
+        ...(input.provider ? { provider: input.provider } : {}),
+        ...(input.threadRef ? { thread_ref: input.threadRef } : {}),
+        ...(input.conversationRef ? { conversation_ref: input.conversationRef } : {}),
+        audience: input.audience,
+        ...(input.citizenId !== undefined ? { citizen_id: input.citizenId } : {}),
+        ...(input.allowedCitizenIds && input.allowedCitizenIds.length > 0
+          ? { allowed_citizen_ids: input.allowedCitizenIds }
+          : {}),
+      },
+    });
   }
 
   async advanceTask(taskId: string, callerId: string): Promise<TaskDto> {

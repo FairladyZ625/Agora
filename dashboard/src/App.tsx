@@ -60,7 +60,8 @@ export default function App() {
           <Route index element={<ProjectDetailPage />} />
           <Route path="work" element={<ProjectCurrentWorkPage />} />
           <Route path="work/:taskId" element={<ProjectCurrentWorkPage />} />
-          <Route path="brain" element={<ProjectBrainPage />} />
+          <Route path="context" element={<ProjectBrainPage />} />
+          <Route path="brain" element={<Navigate to="../context" replace />} />
           <Route
             path="knowledge"
             element={

@@ -13,6 +13,7 @@ import type {
   PromoteTodoResultDto,
   ProjectDto,
   ProjectWorkbenchResponseDto,
+  ProjectContextDeliveryResponseDto,
   ProgressLogDto,
   SkillCatalogEntryDto,
   SkillCatalogListResponseDto,
@@ -78,6 +79,7 @@ export type ApiTodoDto = TodoItemDto;
 export type ApiProjectDto = ProjectDto;
 export type ApiListProjectsResponseDto = ListProjectsResponseDto;
 export type ApiProjectWorkbenchDto = ProjectWorkbenchResponseDto;
+export type ApiProjectContextDeliveryDto = ProjectContextDeliveryResponseDto;
 export type ApiProjectMembershipDto = ProjectMembershipDto;
 export type ApiWorkspaceBootstrapStatusDto = WorkspaceBootstrapStatusDto;
 export type ApiSkillCatalogEntryDto = SkillCatalogEntryDto;

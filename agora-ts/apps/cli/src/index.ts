@@ -57,6 +57,7 @@ import {
   CcConnectManagementService,
   type InteractiveRuntimePort,
   OrchestratorDirectCreateService,
+  ProjectContextDeliveryService,
   ProjectBrainAutomationPolicy,
   ProjectBootstrapService,
   ProjectBrainDoctorService,
@@ -136,6 +137,7 @@ export interface CliDependencies {
   projectService?: ProjectService;
   projectBrainService?: ProjectBrainService;
   projectBrainAutomationService?: ProjectBrainAutomationService;
+  projectContextDeliveryService?: Pick<ProjectContextDeliveryService, 'getDelivery'>;
   contextMaterializationService?: Pick<ContextMaterializationService, 'materialize'>;
   runtimeRepoShimWritebackService?: Pick<RuntimeRepoShimWritebackService, 'write'>;
   projectBrainIndexService?: ProjectBrainIndexService;
@@ -594,6 +596,16 @@ export function createCliProgram(deps: CliDependencies = {}) {
       });
     }
     return resolveComposition().contextMaterializationService;
+  });
+  const projectContextDeliveryService = createLazyObject(() => {
+    if (deps.projectContextDeliveryService) {
+      return deps.projectContextDeliveryService;
+    }
+    return new ProjectContextDeliveryService({
+      contextMaterializationService,
+      taskBrainBindingService: resolveComposition().taskBrainBindingService,
+      taskLookup: taskService,
+    });
   });
   const runtimeRepoShimWritebackService = createLazyObject(() => {
     if (deps.runtimeRepoShimWritebackService) {
@@ -2401,6 +2413,59 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `summary: ${plan.summary}`);
       for (const route of plan.routes) {
         writeLine(stdout, `${route.ordinal}. ${route.kind}\t${route.reference_key}`);
+      }
+    });
+
+  context
+    .command('delivery')
+    .description('通过统一 project_context delivery facade 读取 briefing、reference bundle、routing 与 runtime delivery')
+    .option('--project <projectId>', 'project id')
+    .requiredOption('--audience <audience>', 'controller|citizen|craftsman')
+    .option('--task <taskId>', 'optional task id')
+    .option('--citizen <citizenId>', 'optional citizen id')
+    .option('--allowed-citizen <citizenId>', 'allowed citizen id', collectOption, [])
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project?: string;
+      audience: 'controller' | 'citizen' | 'craftsman';
+      task?: string;
+      citizen?: string;
+      allowedCitizen?: string[];
+      json?: boolean;
+    }) => {
+      const task = options.task ? taskService.getTask(options.task) : null;
+      const projectId = options.project ?? task?.project_id ?? null;
+      if (!projectId) {
+        throw new Error('context delivery requires either --project or --task');
+      }
+      const allowedCitizenIds = options.allowedCitizen && options.allowedCitizen.length > 0
+        ? options.allowedCitizen
+        : (task?.team.members
+          .filter((member) => member.member_kind === 'citizen')
+          .map((member) => member.agentId)
+        ?? []);
+      const delivery = await projectContextDeliveryService.getDelivery({
+        project_id: projectId,
+        audience: options.audience,
+        ...(options.task ? { task_id: options.task } : {}),
+        ...(options.citizen !== undefined ? { citizen_id: options.citizen } : {}),
+        ...(allowedCitizenIds.length > 0
+          ? { allowed_citizen_ids: allowedCitizenIds }
+          : {}),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(delivery, null, 2));
+        return;
+      }
+      writeLine(stdout, delivery.delivery.briefing.markdown.trimEnd());
+      if (delivery.delivery.reference_bundle) {
+        writeLine(stdout, `references: ${delivery.delivery.reference_bundle.references.length}`);
+      }
+      if (delivery.delivery.attention_routing_plan) {
+        writeLine(stdout, `routing: ${delivery.delivery.attention_routing_plan.routes.length}`);
+      }
+      if (delivery.delivery.runtime_delivery) {
+        writeLine(stdout, `manifest: ${delivery.delivery.runtime_delivery.manifest_path}`);
       }
     });
 

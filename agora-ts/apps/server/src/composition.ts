@@ -18,6 +18,7 @@ import {
   HumanAccountService,
   ContextSourceBindingService,
   ContextMaterializationService,
+  ProjectContextDeliveryService,
   ProjectAgentRosterService,
   ProjectBrainAutomationService,
   ProjectBrainIndexQueueService,
@@ -123,6 +124,7 @@ export interface ServerComposition {
   projectBrainService: ProjectBrainService;
   contextRetrievalService: RetrievalService;
   contextMaterializationService: ContextMaterializationService;
+  projectContextDeliveryService: ProjectContextDeliveryService;
   citizenService: CitizenService;
   dashboardQueryService: DashboardQueryService;
   templateAuthoringService: TemplateAuthoringService;
@@ -221,6 +223,14 @@ export interface ServerCompositionFactories {
     context: ServerCompositionContext,
     deps: { projectService: ProjectService; projectBrainService: ProjectBrainService; contextRetrievalService: RetrievalService },
   ) => ContextMaterializationService;
+  createProjectContextDeliveryService: (
+    context: ServerCompositionContext,
+    deps: {
+      contextMaterializationService: ContextMaterializationService;
+      taskBrainBindingService: TaskBrainBindingService;
+      taskService: TaskService;
+    },
+  ) => ProjectContextDeliveryService;
   createProjectBrainIndexWorkerService?: (
     context: ServerCompositionContext,
     deps: { projectBrainService: ProjectBrainService },
@@ -595,6 +605,11 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         }),
       ],
     }),
+    createProjectContextDeliveryService: (_context, deps) => new ProjectContextDeliveryService({
+      contextMaterializationService: deps.contextMaterializationService,
+      taskBrainBindingService: deps.taskBrainBindingService,
+      taskLookup: deps.taskService,
+    }),
     createTaskParticipationService: (context, deps) => new TaskParticipationService({
       participantRepository: new ParticipantBindingRepository(context.db),
       runtimeSessionRepository: new RuntimeSessionBindingRepository(context.db),
@@ -704,6 +719,11 @@ export function buildServerComposition(
     agentRuntimePort,
     ...createCraftsmanTransportDeps(craftsmanMode, legacyRuntimeService, acpRuntime),
   });
+  const projectContextDeliveryService = factories.createProjectContextDeliveryService(context, {
+    contextMaterializationService,
+    taskBrainBindingService,
+    taskService,
+  });
   const archiveJobNotifier = factories.createArchiveJobNotifier(context);
   const archiveJobReceiptIngestor = factories.createArchiveJobReceiptIngestor(context);
   const dashboardQueryService = factories.createDashboardQueryService(context, {
@@ -750,6 +770,7 @@ export function buildServerComposition(
     projectBrainService,
     contextRetrievalService,
     contextMaterializationService,
+    projectContextDeliveryService,
     citizenService,
     dashboardQueryService,
     templateAuthoringService,

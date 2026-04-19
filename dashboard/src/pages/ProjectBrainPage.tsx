@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
+import * as api from '@/lib/api';
 import { useProjectBrainPageCopy } from '@/lib/dashboardCopy';
+import { mapProjectContextDeliveryDto } from '@/lib/projectContextMappers';
 import {
   buildProjectBrainSourceContextHref,
   summarizeProjectBrainContent,
@@ -8,6 +10,7 @@ import {
 } from '@/lib/projectBrainContext';
 import { buildProjectTaskHref } from '@/lib/projectTaskRoutes';
 import { useProjectStore } from '@/stores/projectStore';
+import type { ProjectContextDelivery } from '@/types/projectContext';
 
 type BrainFilter = 'all' | 'core' | 'knowledge' | 'recaps' | 'citizens';
 type BrainItem =
@@ -58,6 +61,12 @@ function buildBrainTaskHref(context: ProjectBrainSourceContext) {
   return buildProjectBrainSourceContextHref(context);
 }
 
+function pickDefaultTaskId(taskIds: Array<{ id: string; state: string }>) {
+  return taskIds.find((task) => ['active', 'in_progress', 'gate_waiting', 'paused', 'blocked'].includes(task.state))?.id
+    ?? taskIds[0]?.id
+    ?? '';
+}
+
 export function ProjectBrainPage() {
   const copy = useProjectBrainPageCopy();
   const { projectId } = useParams<{ projectId: string }>();
@@ -71,10 +80,73 @@ export function ProjectBrainPage() {
     projectId: null,
     key: null,
   });
+  const [audience, setAudience] = useState<'controller' | 'citizen' | 'craftsman'>('controller');
+  const [contextTaskId, setContextTaskId] = useState('');
+  const [deliveryState, setDeliveryState] = useState<{
+    loading: boolean;
+    error: string | null;
+    delivery: ProjectContextDelivery | null;
+  }>({
+    loading: false,
+    error: null,
+    delivery: null,
+  });
+  const [deliveryRefreshNonce, setDeliveryRefreshNonce] = useState(0);
 
   useEffect(() => {
     void selectProject(projectId ?? null);
   }, [projectId, selectProject]);
+
+  const workTasks = selectedProject?.work.tasks ?? [];
+
+  useEffect(() => {
+    const nextTaskId = pickDefaultTaskId(workTasks);
+    setContextTaskId((current) => {
+      if (current && workTasks.some((task) => task.id === current)) {
+        return current;
+      }
+      return nextTaskId;
+    });
+  }, [workTasks]);
+
+  useEffect(() => {
+    if (!selectedProject || !projectId) {
+      return;
+    }
+    let active = true;
+    setDeliveryState((current) => ({
+      ...current,
+      loading: true,
+      error: null,
+    }));
+    void api.getProjectContextDelivery(projectId, {
+      audience,
+      ...(contextTaskId ? { task_id: contextTaskId } : {}),
+    })
+      .then((response) => {
+        if (!active) {
+          return;
+        }
+        setDeliveryState({
+          loading: false,
+          error: null,
+          delivery: mapProjectContextDeliveryDto(response),
+        });
+      })
+      .catch((deliveryError) => {
+        if (!active) {
+          return;
+        }
+        setDeliveryState({
+          loading: false,
+          error: deliveryError instanceof Error ? deliveryError.message : String(deliveryError),
+          delivery: null,
+        });
+      });
+    return () => {
+      active = false;
+    };
+  }, [audience, contextTaskId, deliveryRefreshNonce, projectId, selectedProject]);
 
   if (detailLoading) {
     return (
@@ -226,6 +298,137 @@ export function ProjectBrainPage() {
             <div className="mt-4 flex flex-wrap gap-2">
               <Link className="button-secondary" to={`/projects/${project.id}`}>{copy.backToProjectDetailAction}</Link>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="surface-panel surface-panel--workspace">
+        <div className="section-title-row">
+          <div>
+            <h3 className="section-title">{copy.deliveryTitle}</h3>
+            <p className="type-body-sm mt-2">{copy.deliverySummary}</p>
+          </div>
+          <button type="button" className="button-secondary" onClick={() => setDeliveryRefreshNonce((value) => value + 1)}>
+            {copy.refreshAction}
+          </button>
+        </div>
+        <div className="mt-5 grid gap-4 xl:grid-cols-2">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <span className="field-label">{copy.audienceLabel}</span>
+              <div className="flex flex-wrap gap-2">
+                {(['controller', 'citizen', 'craftsman'] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={audience === value ? 'choice-pill choice-pill--active' : 'choice-pill'}
+                    onClick={() => setAudience(value)}
+                  >
+                    {copy.audienceOptions[value]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label className="space-y-2">
+              <span className="field-label">{copy.taskLabel}</span>
+              <select
+                value={contextTaskId}
+                onChange={(event) => setContextTaskId(event.target.value)}
+                className="input"
+              >
+                <option value="">{copy.taskOptionProjectWide}</option>
+                {work.tasks.map((task) => (
+                  <option key={task.id} value={task.id}>{task.title}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="surface-panel surface-panel--workspace">
+            {deliveryState.loading ? (
+              <p className="type-body-sm">{copy.deliveryLoadingTitle}</p>
+            ) : deliveryState.error ? (
+              <div className="empty-state">
+                <p className="type-heading-sm">{copy.deliveryErrorTitle}</p>
+                <p className="type-body-sm mt-2">{deliveryState.error}</p>
+              </div>
+            ) : deliveryState.delivery ? (
+              <div className="space-y-4">
+                <section className="sheet-section">
+                  <h4 className="section-title">{copy.briefingTitle}</h4>
+                  <pre className="type-text-xs mt-4 whitespace-pre-wrap">{deliveryState.delivery.briefing.markdown}</pre>
+                </section>
+                <section className="sheet-section">
+                  <h4 className="section-title">{copy.referenceBundleTitle}</h4>
+                  {deliveryState.delivery.referenceBundle ? (
+                    <div className="space-y-2 mt-4">
+                      <p className="type-body-sm">{copy.referenceCountLabel(deliveryState.delivery.referenceBundle.references.length)}</p>
+                      {deliveryState.delivery.referenceBundle.references.slice(0, 6).map((reference) => (
+                        <p key={reference.referenceKey} className="type-text-xs break-all">
+                          {reference.referenceKey}
+                          {' | '}
+                          {reference.path}
+                        </p>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="type-body-sm mt-4">{copy.referenceBundleEmpty}</p>
+                  )}
+                </section>
+                <section className="sheet-section">
+                  <h4 className="section-title">{copy.attentionRoutingTitle}</h4>
+                  {deliveryState.delivery.attentionRoutingPlan ? (
+                    <div className="space-y-2 mt-4">
+                      <p className="type-body-sm">{deliveryState.delivery.attentionRoutingPlan.summary}</p>
+                      {deliveryState.delivery.attentionRoutingPlan.routes.length > 0 ? (
+                        deliveryState.delivery.attentionRoutingPlan.routes.map((route) => (
+                          <p key={`${route.ordinal}-${route.referenceKey}`} className="type-text-xs">
+                            {route.ordinal}
+                            {'. '}
+                            {route.referenceKey}
+                            {' — '}
+                            {route.rationale}
+                          </p>
+                        ))
+                      ) : (
+                        <p className="type-body-sm">{copy.attentionRoutesEmpty}</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="type-body-sm mt-4">{copy.attentionRoutingEmpty}</p>
+                  )}
+                </section>
+                <section className="sheet-section">
+                  <h4 className="section-title">{copy.runtimeDeliveryTitle}</h4>
+                  {deliveryState.delivery.runtimeDelivery ? (
+                    <div className="space-y-2 mt-4">
+                      <p className="type-body-sm">{deliveryState.delivery.runtimeDelivery.taskTitle}</p>
+                      <p className="type-text-xs break-all">
+                        {copy.workspacePathLabel}
+                        {': '}
+                        {deliveryState.delivery.runtimeDelivery.workspacePath}
+                      </p>
+                      <p className="type-text-xs break-all">
+                        {copy.manifestPathLabel}
+                        {': '}
+                        {deliveryState.delivery.runtimeDelivery.manifestPath}
+                      </p>
+                      <div className="space-y-1">
+                        <p className="type-label-sm">{copy.artifactPathsTitle}</p>
+                        {Object.entries(deliveryState.delivery.runtimeDelivery.artifactPaths).map(([key, value]) => (
+                          <p key={key} className="type-text-xs break-all">
+                            {copy.audienceOptions[key as keyof typeof copy.audienceOptions]}
+                            {': '}
+                            {value}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="type-body-sm mt-4">{copy.runtimeDeliveryEmpty}</p>
+                  )}
+                </section>
+              </div>
+            ) : null}
           </div>
         </div>
       </section>

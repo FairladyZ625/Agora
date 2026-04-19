@@ -157,6 +157,8 @@ export type {
   PromoteProjectBrainKnowledgeInput,
 } from './project-brain-automation-service.js';
 export { ProjectBrainAutomationService } from './project-brain-automation-service.js';
+export type { ProjectContextDeliveryServiceOptions } from './project-context-delivery-service.js';
+export { ProjectContextDeliveryService } from './project-context-delivery-service.js';
 export type { ProjectBrainChunk } from './project-brain-chunk.js';
 export { ProjectBrainChunkingPolicy } from './project-brain-chunking-policy.js';
 export type { ProjectBrainEmbeddingPort } from './project-brain-embedding-port.js';

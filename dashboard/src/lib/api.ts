@@ -14,6 +14,7 @@ import type {
   ApiProjectMembershipDto,
   ApiPromoteTodoResultDto,
   ApiProjectDto,
+  ApiProjectContextDeliveryDto,
   ApiProjectWorkbenchDto,
   ApiRuntimeDiagnosisResultDto,
   ApiRuntimeRecoveryActionDto,
@@ -49,6 +50,7 @@ import {
   listProjectsResponseSchema,
   observeCraftsmanExecutionsResponseSchema,
   projectSchema,
+  projectContextDeliveryResponseSchema,
   projectWorkbenchResponseSchema,
   projectMembershipSchema,
   promoteTodoResultSchema,
@@ -1560,6 +1562,25 @@ export function getWorkspaceBootstrapStatus(): Promise<ApiWorkspaceBootstrapStat
 
 export function getProjectWorkbench(projectId: string): Promise<ApiProjectWorkbenchDto> {
   return request<ApiProjectWorkbenchDto>(`/projects/${encodeURIComponent(projectId)}`, projectWorkbenchResponseSchema);
+}
+
+export function getProjectContextDelivery(
+  projectId: string,
+  input: {
+    audience: 'controller' | 'citizen' | 'craftsman';
+    task_id?: string;
+    citizen_id?: string | null;
+    allowed_citizen_ids?: string[];
+  },
+): Promise<ApiProjectContextDeliveryDto> {
+  return request<ApiProjectContextDeliveryDto>(
+    `/projects/${encodeURIComponent(projectId)}/context/delivery`,
+    projectContextDeliveryResponseSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export function getProjectNomosState(projectId: string): Promise<ApiProjectNomosStateDto> {

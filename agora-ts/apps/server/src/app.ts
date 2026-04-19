@@ -36,6 +36,8 @@ import {
   validateProjectNomos,
 } from '@agora-ts/config';
 import {
+  projectContextDeliveryRequestSchema,
+  projectContextDeliveryResponseSchema,
   projectContextBriefingRequestSchema,
   projectContextBriefingResponseSchema,
   projectContextAttentionRoutingRequestSchema,
@@ -75,6 +77,7 @@ import {
   createTaskContextBindingRequestSchema,
   orchestratorDirectCreateRequestSchema,
   currentImTaskApproveRequestSchema,
+  currentImTaskContextRequestSchema,
   currentImTaskRejectRequestSchema,
   ingestTaskConversationEntryRequestSchema,
   projectContextMaterializeRequestSchema,
@@ -135,6 +138,7 @@ import {
   OrchestratorDirectCreateService,
   ProjectBrainAutomationPolicy,
   type ProjectBrainDoctorService as ProjectBrainDoctorServiceContract,
+  type ProjectContextDeliveryService,
   type ProjectBrainService,
   ProjectBootstrapService,
   type RetrievalService,
@@ -167,6 +171,7 @@ export interface BuildAppOptions {
   taskService?: TaskService;
   projectService?: ProjectService;
   projectBrainService?: ProjectBrainService;
+  projectContextDeliveryService?: Pick<ProjectContextDeliveryService, 'getDelivery'>;
   contextMaterializationService?: Pick<ContextMaterializationService, 'materialize'>;
   runtimeRepoShimWritebackService?: Pick<RuntimeRepoShimWritebackService, 'write'>;
   contextRetrievalService?: Pick<RetrievalService, 'retrieve' | 'checkHealth'>;
@@ -273,6 +278,98 @@ type HumanActor = {
   role: 'admin' | 'member';
   source: 'dashboard' | 'im';
 };
+
+type CurrentImTaskLocator = {
+  provider: string;
+  thread_ref?: string | null | undefined;
+  conversation_ref?: string | null | undefined;
+};
+
+type ResolvedCurrentImTask = {
+  taskId: string;
+  task: NonNullable<ReturnType<TaskService['getTask']>>;
+};
+
+type CurrentImTaskResolution =
+  | {
+      ok: true;
+      value: ResolvedCurrentImTask;
+    }
+  | {
+      ok: false;
+      statusCode: number;
+      body: { message: string };
+    };
+
+type CurrentImHumanReviewGateResolution =
+  | {
+      ok: true;
+      gateType: 'approval' | 'archon_review';
+    }
+  | {
+      ok: false;
+      statusCode: number;
+      body: { message: string };
+    };
+
+function resolveCurrentImTask(
+  taskContextBindingService: Pick<TaskContextBindingService, 'findLatestBindingByRefs'>,
+  taskService: Pick<TaskService, 'getTask'>,
+  locator: CurrentImTaskLocator,
+): CurrentImTaskResolution {
+  const binding = taskContextBindingService.findLatestBindingByRefs({
+    provider: locator.provider,
+    thread_ref: locator.thread_ref ?? null,
+    conversation_ref: locator.conversation_ref ?? null,
+  });
+  if (!binding) {
+    return {
+      ok: false,
+      statusCode: 404,
+      body: { message: 'task context binding not found for current IM context' },
+    };
+  }
+  const task = taskService.getTask(binding.task_id);
+  if (!task) {
+    return {
+      ok: false,
+      statusCode: 404,
+      body: { message: 'task bound to current IM context not found' },
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      taskId: binding.task_id,
+      task,
+    },
+  };
+}
+
+function resolveCurrentImHumanReviewGate(
+  task: NonNullable<ReturnType<TaskService['getTask']>>,
+  action: 'approval' | 'rejection',
+): CurrentImHumanReviewGateResolution {
+  if (!task.current_stage) {
+    return {
+      ok: false,
+      statusCode: 400,
+      body: { message: `task has no active stage for ${action}` },
+    };
+  }
+  const stage = (task.workflow.stages ?? []).find((item) => item.id === task.current_stage);
+  if (!stage?.gate?.type || (stage.gate.type !== 'approval' && stage.gate.type !== 'archon_review')) {
+    return {
+      ok: false,
+      statusCode: 400,
+      body: { message: `current stage does not accept human ${action}` },
+    };
+  }
+  return {
+    ok: true,
+    gateType: stage.gate.type,
+  };
+}
 
 function translateError(error: unknown) {
   if (error instanceof PermissionDeniedError) {
@@ -2287,6 +2384,58 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.post('/api/projects/:projectId/context/delivery', async (request, reply) => {
+    if (!projectService || !options.projectContextDeliveryService) {
+      return reply.status(503).send({ message: 'Project context delivery is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      projectService.requireProject(params.projectId);
+      const payload = projectContextDeliveryRequestSchema.parse(request.body);
+      return reply.send(projectContextDeliveryResponseSchema.parse(await options.projectContextDeliveryService.getDelivery({
+        project_id: params.projectId,
+        audience: payload.audience,
+        ...(payload.task_id ? { task_id: payload.task_id } : {}),
+        ...(payload.citizen_id !== undefined ? { citizen_id: payload.citizen_id } : {}),
+        ...(payload.allowed_citizen_ids && payload.allowed_citizen_ids.length > 0
+          ? { allowed_citizen_ids: payload.allowed_citizen_ids }
+          : {}),
+      })));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:taskId/context/delivery', async (request, reply) => {
+    if (!taskService || !options.projectContextDeliveryService) {
+      return reply.status(503).send({ message: 'Project context delivery is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string };
+      const task = taskService.getTask(params.taskId);
+      if (!task) {
+        return reply.status(404).send({ message: `Task ${params.taskId} not found` });
+      }
+      if (!task.project_id) {
+        return reply.status(400).send({ message: `Task ${params.taskId} is not bound to a project` });
+      }
+      const payload = projectContextDeliveryRequestSchema.parse(request.body);
+      return reply.send(projectContextDeliveryResponseSchema.parse(await options.projectContextDeliveryService.getDelivery({
+        project_id: task.project_id,
+        audience: payload.audience,
+        task_id: params.taskId,
+        ...(payload.citizen_id !== undefined ? { citizen_id: payload.citizen_id } : {}),
+        ...(payload.allowed_citizen_ids && payload.allowed_citizen_ids.length > 0
+          ? { allowed_citizen_ids: payload.allowed_citizen_ids }
+          : {}),
+      })));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   app.post('/api/projects/:projectId/context/materialize', async (request, reply) => {
     if (!projectService || !options.contextMaterializationService) {
       return reply.status(503).send({ message: 'Project context materialization is not configured' });
@@ -3165,22 +3314,17 @@ export function buildApp(options: BuildAppOptions = {}) {
     let taskId: string | null = null;
     try {
       const payload = currentImTaskApproveRequestSchema.parse(request.body);
-      const binding = taskContextBindingService.findLatestBindingByRefs({
-        provider: payload.provider,
-        thread_ref: payload.thread_ref ?? null,
-        conversation_ref: payload.conversation_ref ?? null,
-      });
-      if (!binding) {
-        return reply.status(404).send({ message: 'task context binding not found for current IM context' });
+      const resolvedCurrentTask = resolveCurrentImTask(taskContextBindingService, taskService, payload);
+      if (!resolvedCurrentTask.ok) {
+        return reply.status(resolvedCurrentTask.statusCode).send(resolvedCurrentTask.body);
       }
-      taskId = binding.task_id;
-      const task = taskService.getTask(binding.task_id);
-      if (!task?.current_stage) {
-        return reply.status(400).send({ message: 'task has no active stage for approval' });
-      }
-      const stage = (task.workflow.stages ?? []).find((item) => item.id === task.current_stage);
-      if (!stage?.gate?.type || (stage.gate.type !== 'approval' && stage.gate.type !== 'archon_review')) {
-        return reply.status(400).send({ message: 'current stage does not accept human approval' });
+      const {
+        value: { taskId: resolvedTaskId, task },
+      } = resolvedCurrentTask;
+      taskId = resolvedTaskId;
+      const gate = resolveCurrentImHumanReviewGate(task, 'approval');
+      if (!gate.ok) {
+        return reply.status(gate.statusCode).send(gate.body);
       }
       humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
       if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
@@ -3189,7 +3333,7 @@ export function buildApp(options: BuildAppOptions = {}) {
           structuredLogs,
           action: 'current-approve',
           result: 'denied',
-          taskId: binding.task_id,
+          taskId: resolvedTaskId,
           actorSource: 'unknown',
           reason: 'missing_authenticated_human_actor',
         });
@@ -3199,12 +3343,12 @@ export function buildApp(options: BuildAppOptions = {}) {
       if (!actorId) {
         return reply.status(400).send({ message: 'missing actor identity for current IM approval' });
       }
-      const updatedTask = stage.gate.type === 'archon_review'
-          ? taskService.archonApproveTask(binding.task_id, {
+      const updatedTask = gate.gateType === 'archon_review'
+          ? taskService.archonApproveTask(resolvedTaskId, {
               reviewerId: actorId,
               comment: payload.comment,
             })
-          : taskService.approveTask(binding.task_id, {
+          : taskService.approveTask(resolvedTaskId, {
               approverId: actorId,
               comment: payload.comment,
             });
@@ -3213,7 +3357,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         structuredLogs,
         action: 'current-approve',
         result: 'success',
-        taskId: binding.task_id,
+        taskId: resolvedTaskId,
         actor: actorId,
         actorSource: humanActor?.source ?? 'payload',
         state: updatedTask.state,
@@ -3247,22 +3391,17 @@ export function buildApp(options: BuildAppOptions = {}) {
     let taskId: string | null = null;
     try {
       const payload = currentImTaskRejectRequestSchema.parse(request.body);
-      const binding = taskContextBindingService.findLatestBindingByRefs({
-        provider: payload.provider,
-        thread_ref: payload.thread_ref ?? null,
-        conversation_ref: payload.conversation_ref ?? null,
-      });
-      if (!binding) {
-        return reply.status(404).send({ message: 'task context binding not found for current IM context' });
+      const resolvedCurrentTask = resolveCurrentImTask(taskContextBindingService, taskService, payload);
+      if (!resolvedCurrentTask.ok) {
+        return reply.status(resolvedCurrentTask.statusCode).send(resolvedCurrentTask.body);
       }
-      taskId = binding.task_id;
-      const task = taskService.getTask(binding.task_id);
-      if (!task?.current_stage) {
-        return reply.status(400).send({ message: 'task has no active stage for rejection' });
-      }
-      const stage = (task.workflow.stages ?? []).find((item) => item.id === task.current_stage);
-      if (!stage?.gate?.type || (stage.gate.type !== 'approval' && stage.gate.type !== 'archon_review')) {
-        return reply.status(400).send({ message: 'current stage does not accept human rejection' });
+      const {
+        value: { taskId: resolvedTaskId, task },
+      } = resolvedCurrentTask;
+      taskId = resolvedTaskId;
+      const gate = resolveCurrentImHumanReviewGate(task, 'rejection');
+      if (!gate.ok) {
+        return reply.status(gate.statusCode).send(gate.body);
       }
       humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
       if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
@@ -3271,7 +3410,7 @@ export function buildApp(options: BuildAppOptions = {}) {
           structuredLogs,
           action: 'current-reject',
           result: 'denied',
-          taskId: binding.task_id,
+          taskId: resolvedTaskId,
           actorSource: 'unknown',
           reason: 'missing_authenticated_human_actor',
         });
@@ -3281,12 +3420,12 @@ export function buildApp(options: BuildAppOptions = {}) {
       if (!actorId) {
         return reply.status(400).send({ message: 'missing actor identity for current IM rejection' });
       }
-      const updatedTask = stage.gate.type === 'archon_review'
-          ? taskService.archonRejectTask(binding.task_id, {
+      const updatedTask = gate.gateType === 'archon_review'
+          ? taskService.archonRejectTask(resolvedTaskId, {
               reviewerId: actorId,
               reason: payload.reason,
             })
-          : taskService.rejectTask(binding.task_id, {
+          : taskService.rejectTask(resolvedTaskId, {
               rejectorId: actorId,
               reason: payload.reason,
             });
@@ -3295,7 +3434,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         structuredLogs,
         action: 'current-reject',
         result: 'success',
-        taskId: binding.task_id,
+        taskId: resolvedTaskId,
         actor: actorId,
         actorSource: humanActor?.source ?? 'payload',
         state: updatedTask.state,
@@ -3316,6 +3455,37 @@ export function buildApp(options: BuildAppOptions = {}) {
           reason: typeof translated.body?.message === 'string' ? translated.body.message : null,
         });
       }
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/im/tasks/current/context/delivery', async (request, reply) => {
+    if (!taskService || !taskContextBindingService || !options.projectContextDeliveryService) {
+      return reply.status(503).send({ message: 'Project context delivery is not configured' });
+    }
+    try {
+      const payload = currentImTaskContextRequestSchema.parse(request.body);
+      const resolvedCurrentTask = resolveCurrentImTask(taskContextBindingService, taskService, payload);
+      if (!resolvedCurrentTask.ok) {
+        return reply.status(resolvedCurrentTask.statusCode).send(resolvedCurrentTask.body);
+      }
+      const {
+        value: { taskId, task },
+      } = resolvedCurrentTask;
+      if (!task?.project_id) {
+        return reply.status(400).send({ message: 'current IM task is not bound to a project' });
+      }
+      return reply.send(projectContextDeliveryResponseSchema.parse(await options.projectContextDeliveryService.getDelivery({
+        project_id: task.project_id,
+        audience: payload.audience,
+        task_id: taskId,
+        ...(payload.citizen_id !== undefined ? { citizen_id: payload.citizen_id } : {}),
+        ...(payload.allowed_citizen_ids && payload.allowed_citizen_ids.length > 0
+          ? { allowed_citizen_ids: payload.allowed_citizen_ids }
+          : {}),
+      })));
+    } catch (error) {
+      const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
     }
   });

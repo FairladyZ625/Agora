@@ -211,6 +211,32 @@ describe('dashboard expansion api client', () => {
           };
         }
         if (url.includes('/projects/proj-alpha')) {
+          if (url.includes('/context/delivery')) {
+            return {
+              scope: 'project_context',
+              delivery: {
+                briefing: {
+                  project_id: 'proj-alpha',
+                  audience: 'controller',
+                  markdown: '# Project Context Briefing',
+                  source_documents: [],
+                },
+                reference_bundle: null,
+                attention_routing_plan: null,
+                runtime_delivery: {
+                  task_id: 'OC-001',
+                  task_title: 'task',
+                  workspace_path: '/tmp/proj-alpha/tasks/OC-001',
+                  manifest_path: '/tmp/proj-alpha/tasks/OC-001/04-context/runtime-delivery-manifest.md',
+                  artifact_paths: {
+                    controller: '/tmp/proj-alpha/tasks/OC-001/04-context/project-context-controller.md',
+                    citizen: '/tmp/proj-alpha/tasks/OC-001/04-context/project-context-citizen.md',
+                    craftsman: '/tmp/proj-alpha/tasks/OC-001/04-context/project-context-craftsman.md',
+                  },
+                },
+              },
+            };
+          }
           return {
             project: {
               id: 'proj-alpha',
@@ -668,6 +694,10 @@ describe('dashboard expansion api client', () => {
 
     await api.listProjects();
     const workbench = await api.getProjectWorkbench('proj-alpha');
+    const delivery = await api.getProjectContextDelivery('proj-alpha', {
+      audience: 'controller',
+      task_id: 'OC-001',
+    });
     await api.createProject({ name: 'Project Beta', owner: 'archon', summary: 'New project' });
     await api.listTasks(undefined, 'proj-alpha');
 
@@ -683,9 +713,17 @@ describe('dashboard expansion api client', () => {
       tasks_total: 1,
       pending_todos: 1,
     });
+    expect(delivery.delivery.runtime_delivery).toMatchObject({
+      task_id: 'OC-001',
+      manifest_path: '/tmp/proj-alpha/tasks/OC-001/04-context/runtime-delivery-manifest.md',
+    });
 
     expectFetchCall('/api/projects', { method: 'GET' });
     expectFetchCall('/api/projects/proj-alpha', { method: 'GET' });
+    expectFetchCall('/api/projects/proj-alpha/context/delivery', {
+      method: 'POST',
+      body: JSON.stringify({ audience: 'controller', task_id: 'OC-001' }),
+    });
     expectFetchCall('/api/projects', {
       method: 'POST',
       body: JSON.stringify({ name: 'Project Beta', owner: 'archon', summary: 'New project' }),

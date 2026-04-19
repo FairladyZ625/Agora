@@ -1,15 +1,15 @@
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ApiProjectWorkbenchDto } from '@/lib/api';
 import { setLocale } from '@/lib/i18n';
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
 import { WorkspaceBootstrapPage } from '@/pages/WorkspaceBootstrapPage';
+import type { ApiProjectWorkbenchDto } from '@/types/api';
 
 const fetchProjects = vi.fn(async () => 'live');
 const PROJECTS_PAGE_SELECTION_KEY = 'agora-projects-selected-project';
-let projectStoreState: {
+let projectStoreState: Record<string, unknown> & {
   selectedProjectId: string | null;
   selectedProject: Record<string, unknown> | null;
 };
@@ -19,7 +19,7 @@ function buildProjectWorkbench(project: {
   name: string;
   summary: string | null;
   owner: string | null;
-  status: string;
+  status: 'active' | 'archived';
   nomosId: string | null;
   repoPath: string | null;
   createdAt: string;
@@ -201,7 +201,7 @@ const PROJECT_ALPHA = {
   repoPath: '/repo/proj-alpha',
   createdAt: '2026-03-16T00:00:00.000Z',
   updatedAt: '2026-03-16T01:00:00.000Z',
-};
+} satisfies Parameters<typeof buildProjectWorkbench>[0];
 
 const PROJECT_BETA = {
   id: 'proj-beta',
@@ -213,19 +213,19 @@ const PROJECT_BETA = {
   repoPath: null,
   createdAt: '2026-03-15T00:00:00.000Z',
   updatedAt: '2026-03-18T09:00:00.000Z',
-};
+} satisfies Parameters<typeof buildProjectWorkbench>[0];
 
 const PROJECT_GAMMA = {
   id: 'proj-gamma',
   name: 'Gamma Research',
   summary: 'Research backlog and discovery stream',
   owner: 'atlas',
-  status: 'paused',
+  status: 'archived',
   nomosId: null,
   repoPath: '/repo/proj-gamma',
   createdAt: '2026-03-14T00:00:00.000Z',
   updatedAt: '2026-03-17T09:00:00.000Z',
-};
+} satisfies Parameters<typeof buildProjectWorkbench>[0];
 
 const PROJECT_DETAILS = {
   'proj-alpha': buildProjectWorkbench(PROJECT_ALPHA, {
@@ -261,6 +261,46 @@ const PROJECT_DETAILS = {
 };
 
 function buildProjectWorkbenchDto(workbench: typeof PROJECT_DETAILS['proj-alpha']): ApiProjectWorkbenchDto {
+  const buildTaskDto = (task: typeof workbench.work.tasks[number]): ApiProjectWorkbenchDto['work']['tasks'][number] => ({
+    id: task.id,
+    version: 1,
+    title: task.title,
+    description: null,
+    type: 'quick',
+    priority: 'normal',
+    creator: 'archon',
+    locale: 'en-US',
+    project_id: task.projectId,
+    state: task.state === 'done' ? 'done' : 'active',
+    archive_status: null,
+    authority: null,
+    controller_ref: 'archon',
+    current_stage: task.state === 'gate_waiting' ? 'review' : 'develop',
+    skill_policy: null,
+    team: null,
+    workflow: null,
+    control: null,
+    scheduler: null,
+    scheduler_snapshot: null,
+    discord: null,
+    metrics: null,
+    error_detail: null,
+    created_at: workbench.project.createdAt,
+    updated_at: workbench.project.updatedAt,
+  });
+
+  const buildTodoDto = (todo: typeof workbench.work.todos[number]): ApiProjectWorkbenchDto['work']['todos'][number] => ({
+    id: todo.id,
+    text: todo.text,
+    project_id: todo.projectId,
+    status: todo.status,
+    due: null,
+    created_at: workbench.project.createdAt,
+    completed_at: todo.status === 'done' ? workbench.project.updatedAt : null,
+    tags: [],
+    promoted_to: null,
+  });
+
   return {
     project: {
       id: workbench.project.id,
@@ -268,8 +308,18 @@ function buildProjectWorkbenchDto(workbench: typeof PROJECT_DETAILS['proj-alpha'
       summary: workbench.project.summary,
       owner: workbench.project.owner,
       status: workbench.project.status,
-      nomos_id: workbench.project.nomosId,
-      repo_path: workbench.project.repoPath,
+      metadata: {
+        ...(workbench.project.nomosId
+          ? {
+              agora: {
+                nomos: {
+                  id: workbench.project.nomosId,
+                },
+              },
+            }
+          : {}),
+        ...(workbench.project.repoPath ? { repo_path: workbench.project.repoPath } : {}),
+      },
       created_at: workbench.project.createdAt,
       updated_at: workbench.project.updatedAt,
     },
@@ -290,21 +340,31 @@ function buildProjectWorkbenchDto(workbench: typeof PROJECT_DETAILS['proj-alpha'
     },
     surfaces: {
       index: workbench.surfaces.index ? {
+        project_id: workbench.project.id,
+        kind: 'index',
+        slug: 'index',
         title: workbench.surfaces.index.title,
         path: workbench.surfaces.index.path,
         content: workbench.surfaces.index.content,
+        created_at: null,
         updated_at: workbench.surfaces.index.updatedAt,
+        source_task_ids: [],
       } : null,
       timeline: workbench.surfaces.timeline ? {
+        project_id: workbench.project.id,
+        kind: 'timeline',
+        slug: 'timeline',
         title: workbench.surfaces.timeline.title,
         path: workbench.surfaces.timeline.path,
         content: workbench.surfaces.timeline.content,
+        created_at: null,
         source_task_ids: workbench.surfaces.timeline.sourceTaskIds,
         updated_at: workbench.surfaces.timeline.updatedAt,
       } : null,
     },
     work: {
       recaps: workbench.work.recaps.map((recap) => ({
+        project_id: workbench.project.id,
         task_id: recap.taskId,
         title: recap.title,
         path: recap.summaryPath,
@@ -312,59 +372,40 @@ function buildProjectWorkbenchDto(workbench: typeof PROJECT_DETAILS['proj-alpha'
         updated_at: recap.updatedAt,
       })),
       knowledge: workbench.work.knowledge.map((knowledge) => ({
-        kind: knowledge.kind,
+        project_id: workbench.project.id,
+        kind: knowledge.kind as ApiProjectWorkbenchDto['work']['knowledge'][number]['kind'],
         slug: knowledge.slug,
         title: knowledge.title,
         path: knowledge.path,
         content: knowledge.content,
+        created_at: null,
         source_task_ids: knowledge.sourceTaskIds,
         updated_at: knowledge.updatedAt,
       })),
-      tasks: workbench.work.tasks.map((task) => ({
-        id: task.id,
-        title: task.title,
-        state: task.state,
-        stage: 'delivery',
-        priority: 'P1',
-        assignee: null,
-        craftsman_label: null,
-        created_at: workbench.project.createdAt,
-        updated_at: workbench.project.updatedAt,
-        awaiting_approval: false,
-        participant_count: 0,
-        pending_review_count: 0,
-        next_action: null,
-        project_id: task.projectId,
-      })),
-      todos: workbench.work.todos.map((todo) => ({
-        id: todo.id,
-        text: todo.text,
-        status: todo.status,
-        due_date: null,
-        priority: null,
-        tags: [],
-        project_id: todo.projectId,
-        created_at: workbench.project.createdAt,
-        updated_at: workbench.project.updatedAt,
-      })),
+      tasks: workbench.work.tasks.map(buildTaskDto),
+      todos: workbench.work.todos.map(buildTodoDto),
     },
     operator: {
       nomos_id: workbench.operator.nomosId,
       repo_path: workbench.operator.repoPath,
-      citizens: workbench.operator.citizens.map((citizen) => ({
-        citizen_id: citizen.citizenId,
-        role_id: citizen.roleId,
-        display_name: citizen.displayName,
-        status: citizen.status,
-        persona: citizen.persona,
-        boundaries: citizen.boundaries,
-        skills_ref: citizen.skillsRef,
-        channel_policies: citizen.channelPolicies,
-        brain_scaffold_mode: citizen.brainScaffoldMode,
-        runtime_projection: {
-          adapter: citizen.runtimeAdapter,
+        citizens: workbench.operator.citizens.map((citizen) => ({
+          citizen_id: citizen.citizenId,
+          project_id: workbench.project.id,
+          role_id: citizen.roleId,
+          display_name: citizen.displayName,
+          status: citizen.status as ApiProjectWorkbenchDto['operator']['citizens'][number]['status'],
+          persona: citizen.persona,
+          boundaries: citizen.boundaries,
+          skills_ref: citizen.skillsRef,
+          channel_policies: citizen.channelPolicies,
+          brain_scaffold_mode: citizen.brainScaffoldMode as ApiProjectWorkbenchDto['operator']['citizens'][number]['brain_scaffold_mode'],
+          runtime_projection: {
+            adapter: citizen.runtimeAdapter,
+            auto_provision: false,
           metadata: citizen.runtimeMetadata,
         },
+        created_at: workbench.project.createdAt,
+        updated_at: workbench.project.updatedAt,
       })),
     },
   };
@@ -1207,7 +1248,7 @@ describe('project workbench pages', () => {
     expect(within(previewPane).getByText('Current Work Brief')).toBeInTheDocument();
     expect(within(previewPane).getByText('Project Surfaces Brief')).toBeInTheDocument();
     expect(within(previewPane).getByRole('link', { name: 'Open Project Workspace' })).toHaveAttribute('href', '/projects/proj-beta');
-    expect(within(previewPane).getByRole('link', { name: 'Open Brain' })).toHaveAttribute('href', '/projects/proj-beta/brain');
+    expect(within(previewPane).getByRole('link', { name: 'Open Context' })).toHaveAttribute('href', '/projects/proj-beta/context');
   });
 
   it('filters and reorders the project pool without navigating away from the page', async () => {
@@ -1332,7 +1373,7 @@ describe('project workbench pages', () => {
     expect(screen.getByText('补 Project 入口')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create Task In Project' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create Todo In Project' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open Project Brain' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open Project Context' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Show operator tools' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Review Draft' })).not.toBeInTheDocument();
     expect(screen.queryByText('/repo/proj-alpha')).not.toBeInTheDocument();

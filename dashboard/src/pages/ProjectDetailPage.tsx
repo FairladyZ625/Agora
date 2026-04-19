@@ -268,7 +268,7 @@ export function ProjectDetailPage() {
             <h2 className="page-title">{project.name}</h2>
             <p className="page-summary">{project.summary ?? copy.emptySummary}</p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Link className="button-secondary" to={`/projects/${project.id}/brain`}>{copy.openBrainAction}</Link>
+              <Link className="button-secondary" to={`/projects/${project.id}/context`}>{copy.openBrainAction}</Link>
               <Link className="button-secondary" to={`/tasks/new?project=${project.id}`}>{copy.createTaskAction}</Link>
               <Link className="button-secondary" to={`/todos?project=${project.id}`}>{copy.createTodoAction}</Link>
             </div>

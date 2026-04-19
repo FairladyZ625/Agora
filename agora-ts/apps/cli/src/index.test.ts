@@ -2570,6 +2570,110 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"markdown": "# Project Context Briefing"');
   });
 
+  it('builds a unified project context delivery payload through the cli command', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const taskService = {
+      getTask: vi.fn().mockReturnValue({
+        id: 'OC-200',
+        title: 'Implement hybrid retrieval',
+        description: 'Need vector recall and lexical rerank.',
+        project_id: 'proj-ctx',
+        team: {
+          members: [
+            { role: 'architect', agentId: 'opus', member_kind: 'controller' },
+            { role: 'citizen', agentId: 'citizen-alpha', member_kind: 'citizen' },
+          ],
+        },
+      }),
+    };
+    const projectContextDeliveryService = {
+      getDelivery: vi.fn().mockResolvedValue({
+        scope: 'project_context',
+        delivery: {
+          briefing: {
+            project_id: 'proj-ctx',
+            audience: 'craftsman',
+            markdown: '# Project Context Briefing',
+            source_documents: [],
+          },
+          reference_bundle: {
+            scope: 'project_context',
+            mode: 'bootstrap',
+            project_id: 'proj-ctx',
+            task_id: 'OC-200',
+            project_map: {
+              index_reference_key: 'index:index',
+              timeline_reference_key: 'timeline:timeline',
+              inventory_count: 1,
+            },
+            inventory: {
+              scope: 'project_context',
+              project_id: 'proj-ctx',
+              generated_at: '2026-04-14T00:00:00.000Z',
+              entries: [],
+            },
+            references: [
+              {
+                scope: 'project_context',
+                reference_key: 'decision:runtime-boundary',
+                project_id: 'proj-ctx',
+                kind: 'decision',
+                slug: 'runtime-boundary',
+                title: 'Runtime Boundary',
+                path: '/brain/projects/proj-ctx/knowledge/decisions/runtime-boundary.md',
+              },
+            ],
+          },
+          attention_routing_plan: {
+            scope: 'project_context',
+            mode: 'bootstrap',
+            project_id: 'proj-ctx',
+            task_id: 'OC-200',
+            audience: 'craftsman',
+            summary: 'Start from the project map.',
+            routes: [],
+          },
+          runtime_delivery: {
+            task_id: 'OC-200',
+            task_title: 'Implement hybrid retrieval',
+            workspace_path: '/tmp/proj-ctx/tasks/OC-200',
+            manifest_path: '/tmp/proj-ctx/tasks/OC-200/04-context/runtime-delivery-manifest.md',
+            artifact_paths: {
+              controller: '/tmp/proj-ctx/tasks/OC-200/04-context/project-context-controller.md',
+              citizen: '/tmp/proj-ctx/tasks/OC-200/04-context/project-context-citizen.md',
+              craftsman: '/tmp/proj-ctx/tasks/OC-200/04-context/project-context-craftsman.md',
+            },
+          },
+        },
+      }),
+    };
+    const program = createCliProgram({
+      taskService: taskService as never,
+      projectContextDeliveryService: projectContextDeliveryService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'context', 'delivery',
+      '--task', 'OC-200',
+      '--audience', 'craftsman',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(taskService.getTask).toHaveBeenCalledWith('OC-200');
+    expect(projectContextDeliveryService.getDelivery).toHaveBeenCalledWith({
+      project_id: 'proj-ctx',
+      audience: 'craftsman',
+      task_id: 'OC-200',
+      allowed_citizen_ids: ['citizen-alpha'],
+    });
+    expect(stdout.value).toContain('"scope": "project_context"');
+    expect(stdout.value).toContain('"manifest_path": "/tmp/proj-ctx/tasks/OC-200/04-context/runtime-delivery-manifest.md"');
+  });
+
   it('prefers context materialization service for project context briefing when configured', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();

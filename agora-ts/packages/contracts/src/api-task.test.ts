@@ -5,6 +5,7 @@ import {
   createSubtasksResponseSchema,
   createTaskRequestSchema,
   currentImTaskApproveRequestSchema,
+  currentImTaskContextRequestSchema,
   currentImTaskRejectRequestSchema,
   probeInactiveTasksRequestSchema,
   taskStatusSchema,
@@ -319,6 +320,11 @@ describe('task api contracts', () => {
       actor_id: 'reviewer-1',
       reason: 'needs more tests',
     }).conversation_ref).toBe('channel-1');
+    expect(currentImTaskContextRequestSchema.parse({
+      thread_ref: 'thread-123',
+      audience: 'craftsman',
+      allowed_citizen_ids: ['citizen-alpha'],
+    }).audience).toBe('craftsman');
   });
 
   it('rejects invalid participant/runtime state values in current stage roster payloads', () => {
