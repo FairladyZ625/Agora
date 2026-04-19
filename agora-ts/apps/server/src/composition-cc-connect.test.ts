@@ -120,7 +120,7 @@ type = "discord"
     ]);
   });
 
-  it('registers cc-connect as a citizen projection adapter in the default server factories', async () => {
+  it('keeps default citizen projection factories scoped to mainline adapters', async () => {
     const { createDefaultServerCompositionFactories } = await import('./composition.js');
     const factories = createDefaultServerCompositionFactories();
     const citizenService = factories.createCitizenService({ db: {} } as never, {
@@ -129,6 +129,6 @@ type = "discord"
     });
 
     const projectionPorts = Reflect.get(citizenService as object, 'projectionPorts') as Map<string, unknown>;
-    expect(Array.from(projectionPorts.keys()).sort()).toEqual(['cc-connect', 'openclaw']);
+    expect(Array.from(projectionPorts.keys()).sort()).toEqual(['openclaw']);
   });
 });

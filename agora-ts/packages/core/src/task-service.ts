@@ -285,16 +285,32 @@ export class TaskService {
     if (this.imProvisioningPort && this.taskContextBindingService) {
       const bindingService = this.taskContextBindingService;
       const provisioningPort = this.imProvisioningPort;
+      const provider = input.im_target?.provider ?? 'discord';
+      const projectImSpace = !input.im_target?.conversation_ref && input.project_id && provider === 'discord'
+        ? this.projectService.getProjectImSpace(input.project_id, 'discord')
+        : null;
+      const resolvedImTarget = input.im_target
+        ? {
+            ...input.im_target,
+            ...(projectImSpace && !input.im_target.conversation_ref ? { conversation_ref: projectImSpace.conversation_ref } : {}),
+          }
+        : (projectImSpace
+            ? {
+                provider: 'discord',
+                conversation_ref: projectImSpace.conversation_ref,
+                visibility: 'public' as const,
+              }
+            : null);
       this.trackBackgroundOperation(provisioningPort.provisionContext({
         task_id: taskId,
         title: input.title,
-        target: input.im_target
+        target: resolvedImTarget
           ? {
-              ...(input.im_target.provider ? { provider: input.im_target.provider } : {}),
-              ...(input.im_target.conversation_ref ? { conversation_ref: input.im_target.conversation_ref } : {}),
-              ...(input.im_target.thread_ref ? { thread_ref: input.im_target.thread_ref } : {}),
-              ...(input.im_target.visibility ? { visibility: input.im_target.visibility } : {}),
-              ...(input.im_target.participant_refs ? { participant_refs: input.im_target.participant_refs } : {}),
+              ...(resolvedImTarget.provider ? { provider: resolvedImTarget.provider } : {}),
+              ...(resolvedImTarget.conversation_ref ? { conversation_ref: resolvedImTarget.conversation_ref } : {}),
+              ...(resolvedImTarget.thread_ref ? { thread_ref: resolvedImTarget.thread_ref } : {}),
+              ...(resolvedImTarget.visibility ? { visibility: resolvedImTarget.visibility } : {}),
+              ...(resolvedImTarget.participant_refs ? { participant_refs: resolvedImTarget.participant_refs } : {}),
             }
           : null,
         participant_refs: imParticipantRefs,

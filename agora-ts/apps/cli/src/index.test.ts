@@ -447,6 +447,49 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('bob');
   });
 
+  it('ensures a project discord space through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const projectService = createProjectServiceFromDb(db);
+    projectService.createProject({
+      id: 'proj-im-space',
+      name: 'Project IM Space',
+    });
+    const imProvisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'forum-created-1',
+    });
+    imProvisioningPort.ensureProjectSpace = async (input) => ({
+      im_provider: input.target?.provider ?? 'discord',
+      conversation_ref: 'forum-created-1',
+      parent_ref: 'category-7',
+      kind: 'forum_channel',
+      managed_by: 'agora',
+    });
+    const program = createCliProgram({
+      projectService,
+      imProvisioningPort,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['projects', 'im-space', 'ensure', 'proj-im-space'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project IM space ready: proj-im-space');
+    expect(stdout.value).toContain('provider: discord');
+    expect(stdout.value).toContain('conversation_ref: forum-created-1');
+    expect(projectService.getProjectImSpace('proj-im-space', 'discord')).toEqual({
+      provider: 'discord',
+      conversation_ref: 'forum-created-1',
+      parent_ref: 'category-7',
+      kind: 'forum_channel',
+      managed_by: 'agora',
+    });
+  });
+
   it('installs the built-in Nomos skeleton and repo shim through the cli project-create path', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

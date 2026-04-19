@@ -621,6 +621,7 @@ export interface IHumanIdentityBindingRepository {
 
 export interface IParticipantBindingRepository {
   insert(input: InsertParticipantBindingInput): ParticipantBindingRecord;
+  getById(id: string): ParticipantBindingRecord | null;
   listByTask(taskId: string): ParticipantBindingRecord[];
   getByTaskAndAgent(
     taskId: string,

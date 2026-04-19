@@ -8,8 +8,29 @@ export interface IMContextTarget {
   provider?: string;
   conversation_ref?: string | null;
   thread_ref?: string | null;
+  parent_ref?: string | null;
   visibility?: 'public' | 'private';
   participant_refs?: string[] | null;
+}
+
+export interface IMProjectSpaceTarget {
+  provider?: string;
+  conversation_ref?: string | null;
+  parent_ref?: string | null;
+}
+
+export interface IMEnsureProjectSpaceRequest {
+  project_id: string;
+  project_name: string;
+  target?: IMProjectSpaceTarget | null;
+}
+
+export interface IMEnsureProjectSpaceResult {
+  im_provider: string;
+  conversation_ref: string;
+  parent_ref?: string | null;
+  kind?: string | null;
+  managed_by?: string | null;
 }
 
 export interface IMProvisionContextRequest {
@@ -85,6 +106,7 @@ export class StubIMMessagingPort implements IMMessagingPort {
 
 export interface IMProvisioningPort {
   /** Create/bind an IM context for a task and return provider-neutral refs. */
+  ensureProjectSpace?(input: IMEnsureProjectSpaceRequest): Promise<IMEnsureProjectSpaceResult>;
   provisionContext(input: IMProvisionContextRequest): Promise<IMProvisionContextResult>;
   joinParticipant(input: IMJoinParticipantRequest): Promise<IMJoinParticipantResult>;
   removeParticipant(input: IMRemoveParticipantRequest): Promise<IMRemoveParticipantResult>;
@@ -94,6 +116,7 @@ export interface IMProvisioningPort {
 
 export class StubIMProvisioningPort implements IMProvisioningPort, IMMessagingPort {
   private readonly provisionedBinding: IMProvisionContextResult;
+  readonly ensuredProjectSpaces: IMEnsureProjectSpaceRequest[] = [];
   readonly provisioned: IMProvisionContextRequest[] = [];
   readonly joined: IMJoinParticipantRequest[] = [];
   readonly removed: IMRemoveParticipantRequest[] = [];
@@ -122,6 +145,17 @@ export class StubIMProvisioningPort implements IMProvisioningPort, IMMessagingPo
       conversation_ref: input.target?.conversation_ref ?? this.provisionedBinding.conversation_ref ?? null,
       thread_ref: input.target?.thread_ref ?? this.provisionedBinding.thread_ref ?? `stub-thread-${input.task_id}`,
       message_root_ref: this.provisionedBinding.message_root_ref ?? null,
+    };
+  }
+
+  async ensureProjectSpace(input: IMEnsureProjectSpaceRequest): Promise<IMEnsureProjectSpaceResult> {
+    this.ensuredProjectSpaces.push(input);
+    return {
+      im_provider: input.target?.provider ?? this.provisionedBinding.im_provider,
+      conversation_ref: input.target?.conversation_ref ?? this.provisionedBinding.conversation_ref ?? `stub-project-space-${input.project_id}`,
+      parent_ref: input.target?.parent_ref ?? null,
+      kind: 'channel',
+      managed_by: 'stub',
     };
   }
 

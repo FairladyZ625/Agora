@@ -45,6 +45,78 @@ describe('server index wiring', () => {
     runtime.db.close();
   });
 
+  it('passes taskInboundService from runtime into buildApp', async () => {
+    const ingest = vi.fn(() => ({
+      entry: {
+        id: 'entry-1',
+        task_id: 'OC-INBOUND',
+        binding_id: 'binding-1',
+        provider: 'discord',
+        provider_message_ref: null,
+        parent_message_ref: null,
+        direction: 'inbound',
+        author_kind: 'human',
+        author_ref: 'user-1',
+        display_name: 'Tester',
+        body: 'hello',
+        body_format: 'plain_text',
+        occurred_at: '2026-04-14T08:00:00.000Z',
+        ingested_at: '2026-04-14T08:00:01.000Z',
+        metadata: null,
+      },
+      task_action_result: null,
+    }));
+    const app = createAppFromRuntime({
+      db: undefined,
+      taskService: undefined,
+      projectService: undefined,
+      projectBrainService: undefined,
+      projectBrainDoctorService: undefined,
+      citizenService: undefined,
+      dashboardQueryService: undefined,
+      inboxService: undefined,
+      templateAuthoringService: undefined,
+      liveSessionStore: undefined,
+      legacyRuntimeService: undefined,
+      tmuxRuntimeService: undefined,
+      taskContextBindingService: undefined,
+      taskConversationService: { ingest: vi.fn() },
+      taskInboundService: { ingest },
+      taskParticipationService: undefined,
+      humanAccountService: undefined,
+      notificationDispatcher: undefined,
+      apiAuth: undefined,
+      dashboardAuth: undefined,
+      rateLimit: undefined,
+      observability: {
+        ready_path: '/ready',
+        metrics_enabled: false,
+        structured_logs: false,
+      },
+      dashboardDir: undefined,
+      dispose: async () => {},
+    } as unknown as ReturnType<typeof createServerRuntime>);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/conversations/ingest',
+      payload: {
+        provider: 'discord',
+        conversation_ref: 'forum-1',
+        thread_ref: 'thread-1',
+        direction: 'inbound',
+        author_kind: 'human',
+        author_ref: 'user-1',
+        display_name: 'Tester',
+        body: 'hello',
+        occurred_at: '2026-04-14T08:00:00.000Z',
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(ingest).toHaveBeenCalledTimes(1);
+  });
+
   it('passes projectBrainDoctorService from runtime into buildApp', async () => {
     const diagnoseProject = vi.fn(async (projectId: string) => ({
       project_id: projectId,

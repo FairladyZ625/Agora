@@ -210,6 +210,74 @@ describe('server runtime', () => {
     runtime.db.close();
   });
 
+  it('starts and stops cc-connect bridge runtime service when provided by composition', () => {
+    const dir = makeTempDir();
+    configureRuntimeEnv(dir);
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        db_path: dbPath,
+      }),
+    );
+
+    const start = vi.fn();
+    const stop = vi.fn();
+
+    const runtime = createServerRuntime({
+      configPath,
+      factories: {
+        createCcConnectBridgeRuntimeService: () => ({
+          runtime_provider: 'cc-connect',
+          start,
+          stop,
+          sendInboundMessage: vi.fn(async () => undefined),
+        }) as never,
+      },
+    });
+
+    expect(start).toHaveBeenCalledTimes(1);
+
+    runtime.dispose();
+
+    expect(stop).toHaveBeenCalledTimes(1);
+    runtime.db.close();
+  });
+
+  it('starts and stops discord thread ingress service when provided by composition', () => {
+    const dir = makeTempDir();
+    configureRuntimeEnv(dir);
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        db_path: dbPath,
+      }),
+    );
+
+    const start = vi.fn();
+    const stop = vi.fn();
+
+    const runtime = createServerRuntime({
+      configPath,
+      factories: {
+        createDiscordThreadIngressService: () => ({
+          start,
+          stop,
+        }) as never,
+      },
+    });
+
+    expect(start).toHaveBeenCalledTimes(1);
+
+    runtime.dispose();
+
+    expect(stop).toHaveBeenCalledTimes(1);
+    runtime.db.close();
+  });
+
   it('disposes runtime-owned services on shutdown', () => {
     vi.useFakeTimers();
     const dir = makeTempDir();

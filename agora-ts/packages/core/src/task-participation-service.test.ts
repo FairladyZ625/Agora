@@ -330,4 +330,61 @@ describe('task participation service', () => {
       }),
     ]);
   });
+
+  it('binds a runtime session directly for a participant', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const service = createTaskParticipationServiceFromDb(db, {
+      participantIdGenerator: () => 'pb-bind-1',
+      runtimeSessionIdGenerator: () => 'rs-bind-1',
+      agentRuntimePort: {
+        resolveAgent(agentRef) {
+          return {
+            agent_ref: agentRef,
+            runtime_provider: 'cc-connect',
+            runtime_actor_ref: agentRef,
+          };
+        },
+      },
+    });
+
+    tasks.insertTask({
+      id: 'OC-PART-BIND',
+      title: 'bind runtime session',
+      description: '',
+      type: 'custom',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [{ role: 'developer', agentId: 'cc-connect:agora-codex', model_preference: 'fast_coding' }] },
+      workflow: { stages: [] },
+    });
+    service.seedParticipants('OC-PART-BIND', {
+      members: [{ role: 'developer', agentId: 'cc-connect:agora-codex', model_preference: 'fast_coding' }],
+    });
+
+    const bound = service.bindRuntimeSession({
+      participant_binding_id: 'pb-bind-1',
+      runtime_provider: 'cc-connect',
+      runtime_session_ref: 'agora-discord:thread-1:pb-bind-1',
+      runtime_actor_ref: 'cc-connect:agora-codex',
+      presence_state: 'active',
+      binding_reason: 'thread_bridge_dispatch',
+      last_seen_at: '2026-04-14T12:00:00.000Z',
+    });
+
+    expect(bound).toEqual(
+      expect.objectContaining({
+        id: 'rs-bind-1',
+        participant_binding_id: 'pb-bind-1',
+        runtime_provider: 'cc-connect',
+        runtime_session_ref: 'agora-discord:thread-1:pb-bind-1',
+        runtime_actor_ref: 'cc-connect:agora-codex',
+        presence_state: 'active',
+        binding_reason: 'thread_bridge_dispatch',
+        desired_runtime_presence: 'detached',
+      }),
+    );
+    expect(service.getRuntimeSessionByParticipant('pb-bind-1')).toEqual(bound);
+  });
 });

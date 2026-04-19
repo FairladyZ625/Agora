@@ -7,6 +7,7 @@ import { createTaskServiceFromDb } from '@agora-ts/testing';
 import { TaskContextBindingService } from './task-context-binding-service.js';
 import { TaskConversationService } from './task-conversation-service.js';
 import { TaskInboundService } from './task-inbound-service.js';
+import { RuntimeThreadMessageRouter } from './runtime-message-ports.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
@@ -279,5 +280,281 @@ describe('task inbound service', () => {
         state: 'done',
       },
     });
+  });
+
+  it('routes inbound human messages to runtime thread ports when explicitly mentioned', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({
+      repository: bindingRepository,
+      idGenerator: () => 'binding-inbound-route-1',
+    });
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
+      idGenerator: () => 'entry-inbound-route-1',
+      now: () => new Date('2026-03-17T13:30:01.000Z'),
+    });
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-INBOUND-ROUTE-1',
+      archonUsers: ['alice'],
+    });
+    const task = taskService.createTask({
+      title: 'Inbound routing task',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+    bindings.createBinding({
+      task_id: task.id,
+      im_provider: 'discord',
+      thread_ref: 'thread-inbound-route-1',
+    });
+
+    const participants = [
+      {
+        id: 'participant-1',
+        task_id: task.id,
+        binding_id: 'binding-inbound-route-1',
+        agent_ref: 'cc-connect:agora-codex',
+        runtime_provider: 'cc-connect',
+        task_role: 'developer',
+        source: 'template',
+        join_status: 'joined',
+        created_at: '2026-03-17T13:30:00.000Z',
+        joined_at: null,
+        left_at: null,
+      },
+    ];
+    const routed: Array<Record<string, unknown>> = [];
+    const router = new RuntimeThreadMessageRouter([{
+      runtime_provider: 'cc-connect',
+      sendInboundMessage: async (input) => {
+        routed.push(input);
+      },
+    }]);
+
+    const inbound = new TaskInboundService(
+      conversations,
+      bindings,
+      taskService as unknown as ConstructorParameters<typeof TaskInboundService>[2],
+      { listParticipants: () => participants },
+      router,
+    );
+    const result = inbound.ingest({
+      provider: 'discord',
+      thread_ref: 'thread-inbound-route-1',
+      provider_message_ref: 'msg-inbound-route-1',
+      direction: 'inbound',
+      author_kind: 'human',
+      author_ref: 'alice',
+      display_name: 'Alice',
+      body: '@agora-codex please summarize the context',
+      occurred_at: '2026-03-17T13:30:00.000Z',
+    });
+
+    expect(result).toMatchObject({
+      entry: {
+        id: 'entry-inbound-route-1',
+        task_id: 'OC-INBOUND-ROUTE-1',
+        body: '@agora-codex please summarize the context',
+      },
+      task_action_result: null,
+    });
+    expect(routed).toEqual([{
+      task_id: 'OC-INBOUND-ROUTE-1',
+      provider: 'discord',
+      thread_ref: 'thread-inbound-route-1',
+      conversation_ref: null,
+      entry_id: 'entry-inbound-route-1',
+      body: '@agora-codex please summarize the context',
+      author_ref: 'alice',
+      display_name: 'Alice',
+      participant_binding_id: 'participant-1',
+      agent_ref: 'cc-connect:agora-codex',
+    }]);
+  });
+
+  it('does not route inbound human messages without explicit mentions', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({
+      repository: bindingRepository,
+      idGenerator: () => 'binding-inbound-route-2',
+    });
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
+      idGenerator: () => 'entry-inbound-route-2',
+      now: () => new Date('2026-03-17T13:40:01.000Z'),
+    });
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-INBOUND-ROUTE-2',
+      archonUsers: ['alice'],
+    });
+    const task = taskService.createTask({
+      title: 'Inbound routing task',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+    bindings.createBinding({
+      task_id: task.id,
+      im_provider: 'discord',
+      thread_ref: 'thread-inbound-route-2',
+    });
+
+    const participants = [
+      {
+        id: 'participant-2',
+        task_id: task.id,
+        binding_id: 'binding-inbound-route-2',
+        agent_ref: 'cc-connect:agora-codex',
+        runtime_provider: 'cc-connect',
+        task_role: 'developer',
+        source: 'template',
+        join_status: 'joined',
+        created_at: '2026-03-17T13:40:00.000Z',
+        joined_at: null,
+        left_at: null,
+      },
+    ];
+    const routed: Array<Record<string, unknown>> = [];
+    const router = new RuntimeThreadMessageRouter([{
+      runtime_provider: 'cc-connect',
+      sendInboundMessage: async (input) => {
+        routed.push(input);
+      },
+    }]);
+
+    const inbound = new TaskInboundService(
+      conversations,
+      bindings,
+      taskService as unknown as ConstructorParameters<typeof TaskInboundService>[2],
+      { listParticipants: () => participants },
+      router,
+    );
+    const result = inbound.ingest({
+      provider: 'discord',
+      thread_ref: 'thread-inbound-route-2',
+      provider_message_ref: 'msg-inbound-route-2',
+      direction: 'inbound',
+      author_kind: 'human',
+      author_ref: 'alice',
+      display_name: 'Alice',
+      body: 'please summarize the context',
+      occurred_at: '2026-03-17T13:40:00.000Z',
+    });
+
+    expect(result).toMatchObject({
+      entry: {
+        id: 'entry-inbound-route-2',
+        task_id: 'OC-INBOUND-ROUTE-2',
+        body: 'please summarize the context',
+      },
+      task_action_result: null,
+    });
+    expect(routed).toEqual([]);
+  });
+
+  it('routes inbound human messages when explicit mentions are provided by adapter metadata', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({
+      repository: bindingRepository,
+      idGenerator: () => 'binding-inbound-route-3',
+    });
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
+      idGenerator: () => 'entry-inbound-route-3',
+      now: () => new Date('2026-03-17T13:50:01.000Z'),
+    });
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-INBOUND-ROUTE-3',
+      archonUsers: ['alice'],
+    });
+    const task = taskService.createTask({
+      title: 'Inbound metadata routing task',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+    bindings.createBinding({
+      task_id: task.id,
+      im_provider: 'discord',
+      thread_ref: 'thread-inbound-route-3',
+    });
+
+    const participants = [
+      {
+        id: 'participant-3',
+        task_id: task.id,
+        binding_id: 'binding-inbound-route-3',
+        agent_ref: 'cc-connect:agora-codex-immediate',
+        runtime_provider: 'cc-connect',
+        task_role: 'developer',
+        source: 'template',
+        join_status: 'joined',
+        created_at: '2026-03-17T13:50:00.000Z',
+        joined_at: null,
+        left_at: null,
+      },
+    ];
+    const routed: Array<Record<string, unknown>> = [];
+    const router = new RuntimeThreadMessageRouter([{
+      runtime_provider: 'cc-connect',
+      sendInboundMessage: async (input) => {
+        routed.push(input);
+      },
+    }]);
+
+    const inbound = new TaskInboundService(
+      conversations,
+      bindings,
+      taskService as unknown as ConstructorParameters<typeof TaskInboundService>[2],
+      { listParticipants: () => participants },
+      router,
+    );
+    inbound.ingest({
+      provider: 'discord',
+      thread_ref: 'thread-inbound-route-3',
+      provider_message_ref: 'msg-inbound-route-3',
+      direction: 'inbound',
+      author_kind: 'human',
+      author_ref: 'alice',
+      display_name: 'Alice',
+      body: '<@1491781344664227942> please summarize the context',
+      occurred_at: '2026-03-17T13:50:00.000Z',
+      metadata: {
+        explicit_mentions: ['agora-codex-immediate'],
+      },
+    });
+
+    expect(routed).toEqual([expect.objectContaining({
+      participant_binding_id: 'participant-3',
+      agent_ref: 'cc-connect:agora-codex-immediate',
+    })]);
   });
 });

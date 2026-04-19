@@ -1,4 +1,6 @@
 import type {
+  IMEnsureProjectSpaceRequest,
+  IMEnsureProjectSpaceResult,
   IMArchiveContextRequest,
   IMJoinParticipantRequest,
   IMJoinParticipantResult,
@@ -16,6 +18,7 @@ export interface DiscordIMProvisioningAdapterOptions {
   defaultChannelId: string;
   participantTokens?: Record<string, string>;
   primaryAccountId?: string | null;
+  excludedUserIds?: string[];
 }
 
 export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
@@ -25,6 +28,7 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
   private readonly defaultChannelId: string;
   private readonly participantTokens: Record<string, string>;
   private readonly primaryAccountId: string | null;
+  private readonly excludedUserIds: string[];
   private readonly participantUserIds = new Map<string, string>();
 
   constructor(options: DiscordIMProvisioningAdapterOptions) {
@@ -32,6 +36,7 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
     this.defaultChannelId = options.defaultChannelId;
     this.participantTokens = options.participantTokens ?? {};
     this.primaryAccountId = options.primaryAccountId ?? null;
+    this.excludedUserIds = Array.from(new Set((options.excludedUserIds ?? []).filter((value) => value.length > 0)));
   }
 
   async provisionContext(input: IMProvisionContextRequest): Promise<IMProvisionContextResult> {
@@ -64,6 +69,38 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
       conversation_ref: conversationRef,
       thread_ref: threadRef,
       message_root_ref: null,
+    };
+  }
+
+  async ensureProjectSpace(input: IMEnsureProjectSpaceRequest): Promise<IMEnsureProjectSpaceResult> {
+    const provider = input.target?.provider;
+    if (provider && provider !== 'discord') {
+      throw new Error(`Discord provisioning adapter cannot serve provider ${provider}`);
+    }
+    if (input.target?.conversation_ref) {
+      return {
+        im_provider: 'discord',
+        conversation_ref: input.target.conversation_ref,
+        parent_ref: input.target.parent_ref ?? null,
+        kind: 'forum_channel',
+        managed_by: 'external',
+      };
+    }
+    const defaultChannel = await this.client.getChannel(this.defaultChannelId);
+    if (!defaultChannel.guild_id) {
+      throw new Error(`Discord default channel ${this.defaultChannelId} is not a guild channel`);
+    }
+    const forumName = normalizeForumName(input.project_name);
+    const forumId = await this.client.createForumChannel(defaultChannel.guild_id, forumName, input.target?.parent_ref ?? defaultChannel.parent_id ?? null);
+    for (const userId of this.excludedUserIds) {
+      await this.client.denyViewChannelForUser(forumId, userId);
+    }
+    return {
+      im_provider: 'discord',
+      conversation_ref: forumId,
+      parent_ref: input.target?.parent_ref ?? defaultChannel.parent_id ?? null,
+      kind: 'forum_channel',
+      managed_by: 'agora',
     };
   }
 
@@ -229,6 +266,10 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
   ) {
     return members.every((member) => this.readThreadMemberUserId(member) !== userId);
   }
+}
+
+function normalizeForumName(name: string) {
+  return name.trim().slice(0, 100) || 'agora-project';
 }
 
 function looksLikeDiscordUserId(value: string) {

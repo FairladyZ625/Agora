@@ -167,6 +167,45 @@ describe('project service', () => {
     expect(() => service.requireProject('proj-missing')).toThrow('Project not found: proj-missing');
   });
 
+  it('stores and resolves provider-neutral project IM space bindings in project metadata', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = createProjectServiceFromDb(db);
+
+    service.createProject({
+      id: 'proj-im-space',
+      name: 'Project IM Space',
+    });
+
+    service.upsertProjectImSpace('proj-im-space', {
+      provider: 'discord',
+      conversation_ref: 'forum-123',
+      parent_ref: 'category-9',
+      kind: 'forum_channel',
+      managed_by: 'agora',
+    });
+
+    expect(service.getProjectImSpace('proj-im-space', 'discord')).toEqual({
+      provider: 'discord',
+      conversation_ref: 'forum-123',
+      parent_ref: 'category-9',
+      kind: 'forum_channel',
+      managed_by: 'agora',
+    });
+    expect(service.requireProject('proj-im-space').metadata).toMatchObject({
+      agora: {
+        im_spaces: {
+          discord: {
+            conversation_ref: 'forum-123',
+            parent_ref: 'category-9',
+            kind: 'forum_channel',
+            managed_by: 'agora',
+          },
+        },
+      },
+    });
+  });
+
   it('writes, lists, reads, and searches project knowledge docs', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

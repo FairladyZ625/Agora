@@ -6,6 +6,9 @@ const DEFAULT_CC_CONNECT_CONFIG_DIR = resolve(homedir(), '.cc-connect');
 const DEFAULT_CC_CONNECT_CONFIG_PATH = resolve(homedir(), '.cc-connect', 'config.toml');
 const DEFAULT_CC_CONNECT_MANAGEMENT_HOST = '127.0.0.1';
 const DEFAULT_CC_CONNECT_MANAGEMENT_PORT = 9820;
+const DEFAULT_CC_CONNECT_BRIDGE_HOST = '127.0.0.1';
+const DEFAULT_CC_CONNECT_BRIDGE_PORT = 9810;
+const DEFAULT_CC_CONNECT_BRIDGE_PATH = '/bridge/ws';
 
 type ConfigTargetDependencies = {
   env?: NodeJS.ProcessEnv;
@@ -20,12 +23,20 @@ type MutableProjectTarget = {
   workDir: string | null;
   primaryModel: string | null;
   channelProviders: Set<string>;
+  discordBotUserIds: Set<string>;
 };
 
 type MutableManagementConfig = {
   enabled: boolean | null;
   port: number | null;
   token: string | null;
+};
+
+type MutableBridgeConfig = {
+  enabled: boolean | null;
+  port: number | null;
+  token: string | null;
+  path: string | null;
 };
 
 export interface CcConnectProjectTarget {
@@ -35,10 +46,19 @@ export interface CcConnectProjectTarget {
   workDir: string | null;
   primaryModel: string | null;
   channelProviders: string[];
+  discord?: {
+    bot_user_ids: string[];
+  };
   management: {
     enabled: boolean;
     baseUrl: string | null;
     token: string | null;
+  };
+  bridge: {
+    enabled: boolean;
+    baseUrl: string | null;
+    token: string | null;
+    path: string;
   };
 }
 
@@ -104,8 +124,15 @@ function parseCcConnectConfig(raw: string, configPath: string): CcConnectProject
     port: null,
     token: null,
   };
+  const bridge: MutableBridgeConfig = {
+    enabled: null,
+    port: null,
+    token: null,
+    path: null,
+  };
   const projects: MutableProjectTarget[] = [];
   let currentProject: MutableProjectTarget | null = null;
+  let currentPlatformType: string | null = null;
 
   for (const rawLine of raw.split('\n')) {
     const line = stripTomlComment(rawLine).trim();
@@ -121,13 +148,16 @@ function parseCcConnectConfig(raw: string, configPath: string): CcConnectProject
         workDir: null,
         primaryModel: null,
         channelProviders: new Set<string>(),
+        discordBotUserIds: new Set<string>(),
       };
       projects.push(currentProject);
       currentSection = 'projects';
+      currentPlatformType = null;
       continue;
     }
     if (arraySection === 'projects.platforms') {
       currentSection = 'projects.platforms';
+      currentPlatformType = null;
       continue;
     }
 
@@ -154,6 +184,22 @@ function parseCcConnectConfig(raw: string, configPath: string): CcConnectProject
       }
       if (key === 'token' && typeof value === 'string') {
         management.token = value;
+      }
+      continue;
+    }
+
+    if (currentSection === 'bridge') {
+      if (key === 'enabled' && typeof value === 'boolean') {
+        bridge.enabled = value;
+      }
+      if (key === 'port' && typeof value === 'number') {
+        bridge.port = value;
+      }
+      if (key === 'token' && typeof value === 'string') {
+        bridge.token = value;
+      }
+      if (key === 'path' && typeof value === 'string') {
+        bridge.path = value;
       }
       continue;
     }
@@ -186,6 +232,20 @@ function parseCcConnectConfig(raw: string, configPath: string): CcConnectProject
     if (currentSection === 'projects.platforms') {
       if (key === 'type' && typeof value === 'string') {
         currentProject.channelProviders.add(value);
+        currentPlatformType = value;
+      }
+      continue;
+    }
+    if (currentSection === 'projects.platforms.options') {
+      if (
+        currentPlatformType === 'discord'
+        && key === 'token'
+        && typeof value === 'string'
+      ) {
+        const decodedUserId = decodeDiscordTokenUserId(value);
+        if (decodedUserId) {
+          currentProject.discordBotUserIds.add(decodedUserId);
+        }
       }
       continue;
     }
@@ -194,6 +254,11 @@ function parseCcConnectConfig(raw: string, configPath: string): CcConnectProject
   const managementEnabled = management.enabled === true;
   const managementBaseUrl = managementEnabled
     ? `http://${DEFAULT_CC_CONNECT_MANAGEMENT_HOST}:${management.port ?? DEFAULT_CC_CONNECT_MANAGEMENT_PORT}`
+    : null;
+  const bridgeEnabled = bridge.enabled === true;
+  const bridgePath = bridge.path?.trim() || DEFAULT_CC_CONNECT_BRIDGE_PATH;
+  const bridgeBaseUrl = bridgeEnabled
+    ? `http://${DEFAULT_CC_CONNECT_BRIDGE_HOST}:${bridge.port ?? DEFAULT_CC_CONNECT_BRIDGE_PORT}${bridgePath}`
     : null;
 
   return projects
@@ -205,12 +270,36 @@ function parseCcConnectConfig(raw: string, configPath: string): CcConnectProject
       workDir: project.workDir,
       primaryModel: project.primaryModel,
       channelProviders: Array.from(project.channelProviders).sort(),
+      discord: {
+        bot_user_ids: Array.from(project.discordBotUserIds).sort(),
+      },
       management: {
         enabled: managementEnabled,
         baseUrl: managementBaseUrl,
         token: management.token?.trim() || null,
       },
+      bridge: {
+        enabled: bridgeEnabled,
+        baseUrl: bridgeBaseUrl,
+        token: bridge.token?.trim() || null,
+        path: bridgePath,
+      },
     }));
+}
+
+function decodeDiscordTokenUserId(token: string): string | null {
+  const [rawPrefix] = token.split('.');
+  if (!rawPrefix) {
+    return null;
+  }
+  const normalized = rawPrefix.replace(/-/g, '+').replace(/_/g, '/');
+  const padLength = (4 - (normalized.length % 4)) % 4;
+  try {
+    const decoded = Buffer.from(normalized.padEnd(normalized.length + padLength, '='), 'base64').toString('utf8');
+    return /^[0-9]{15,25}$/.test(decoded) ? decoded : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseScalar(raw: string): string | number | boolean | null {
