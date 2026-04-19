@@ -14,3 +14,10 @@ export type {
   CcConnectBridgeEvent,
   CcConnectBridgeMessageInput,
 } from './cc-connect-bridge-client.js';
+export { CcConnectAgoraContextDeliveryClient } from './agora-context-delivery-client.js';
+export type {
+  CcConnectAgoraApiInput,
+  CcConnectAgoraContextDeliveryClientOptions,
+  CcConnectCurrentTaskContextDeliveryInput,
+  CcConnectTaskContextDeliveryInput,
+} from './agora-context-delivery-client.js';
