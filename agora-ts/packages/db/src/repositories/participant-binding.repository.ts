@@ -2,6 +2,7 @@ import {
   type InsertParticipantBindingInput,
   type IParticipantBindingRepository,
   participantBindingJoinStatusSchema,
+  participantBindingSourceSchema,
   participantTaskRoleSchema,
   runtimeProviderSchema,
   type ParticipantBindingRecord,
@@ -91,7 +92,7 @@ export class ParticipantBindingRepository implements IParticipantBindingReposito
   updateExposureState(
     id: string,
     input: {
-      desired_exposure: string;
+      desired_exposure: ParticipantBindingRecord['desired_exposure'];
       exposure_reason?: string | null;
       exposure_stage_id?: string | null;
       reconciled_at?: string | null;
@@ -118,9 +119,9 @@ export class ParticipantBindingRepository implements IParticipantBindingReposito
       agent_ref: String(row.agent_ref),
       runtime_provider: row.runtime_provider === null ? null : runtimeProviderSchema.parse(String(row.runtime_provider)),
       task_role: participantTaskRoleSchema.parse(String(row.task_role)),
-      source: String(row.source),
+      source: participantBindingSourceSchema.parse(String(row.source)),
       join_status: participantBindingJoinStatusSchema.parse(String(row.join_status)),
-      desired_exposure: row.desired_exposure === undefined ? 'hidden' : String(row.desired_exposure),
+      desired_exposure: row.desired_exposure === 'in_thread' ? 'in_thread' : 'hidden',
       exposure_reason: row.exposure_reason === null || row.exposure_reason === undefined ? null : String(row.exposure_reason),
       exposure_stage_id: row.exposure_stage_id === null || row.exposure_stage_id === undefined ? null : String(row.exposure_stage_id),
       reconciled_at: row.reconciled_at === null || row.reconciled_at === undefined ? null : String(row.reconciled_at),

@@ -167,8 +167,24 @@ export interface TaskBrainBindingRecord {
 
 // ─── Task authority ──────────────────────────────────────────────────────
 
-import type { ParticipantBindingJoinStatusDto, ParticipantTaskRoleDto } from './participant-binding.js';
-import type { RuntimeProviderDto, RuntimeSessionPresenceStateDto } from './runtime-session-binding.js';
+import type {
+  ParticipantBindingJoinStatusDto,
+  ParticipantBindingSourceDto,
+  ParticipantTaskRoleDto,
+} from './participant-binding.js';
+import type {
+  ProjectAgentRosterKindDto,
+  ProjectAgentRosterStatusDto,
+} from './project-agent-roster.js';
+import type {
+  ProjectMembershipRoleDto,
+  ProjectMembershipStatusDto,
+} from './project-membership.js';
+import type {
+  RuntimeProviderDto,
+  RuntimeSessionDesiredPresenceDto,
+  RuntimeSessionPresenceStateDto,
+} from './runtime-session-binding.js';
 
 export interface TaskAuthorityRecord {
   task_id: string;
@@ -190,9 +206,9 @@ export interface ParticipantBindingRecord {
   agent_ref: string;
   runtime_provider: RuntimeProviderDto | null;
   task_role: ParticipantTaskRoleDto;
-  source: string;
+  source: ParticipantBindingSourceDto;
   join_status: ParticipantBindingJoinStatusDto;
-  desired_exposure: string;
+  desired_exposure: 'in_thread' | 'hidden';
   exposure_reason: string | null;
   exposure_stage_id: string | null;
   reconciled_at: string | null;
@@ -210,7 +226,7 @@ export interface RuntimeSessionBindingRecord {
   continuity_ref: string | null;
   presence_state: RuntimeSessionPresenceStateDto;
   binding_reason: string | null;
-  desired_runtime_presence: string;
+  desired_runtime_presence: RuntimeSessionDesiredPresenceDto;
   reconcile_stage_id: string | null;
   reconciled_at: string | null;
   last_seen_at: string;
@@ -351,8 +367,8 @@ export interface ProjectMembershipRecord {
   id: string;
   project_id: string;
   account_id: number;
-  role: string;
-  status: string;
+  role: ProjectMembershipRoleDto;
+  status: ProjectMembershipStatusDto;
   added_by_account_id: number | null;
   created_at: string;
   updated_at: string;
@@ -362,9 +378,9 @@ export interface ProjectAgentRosterEntryRecord {
   id: string;
   project_id: string;
   agent_ref: string;
-  kind: string;
+  kind: ProjectAgentRosterKindDto;
   default_inclusion: boolean;
-  status: string;
+  status: ProjectAgentRosterStatusDto;
   created_at: string;
   updated_at: string;
 }
@@ -552,14 +568,14 @@ export interface UpsertProjectMembershipInput {
   id: string;
   project_id: string;
   account_id: number;
-  role: string;
-  status?: string;
+  role: ProjectMembershipRoleDto;
+  status?: ProjectMembershipStatusDto;
   added_by_account_id?: number | null;
 }
 
 export interface UpdateProjectMembershipInput {
-  role?: string;
-  status?: string;
+  role?: ProjectMembershipRoleDto;
+  status?: ProjectMembershipStatusDto;
   added_by_account_id?: number | null;
 }
 
@@ -567,9 +583,9 @@ export interface UpsertProjectAgentRosterEntryInput {
   id: string;
   project_id: string;
   agent_ref: string;
-  kind: string;
+  kind: ProjectAgentRosterKindDto;
   default_inclusion?: boolean;
-  status?: string;
+  status?: ProjectAgentRosterStatusDto;
 }
 
 export interface AcquireProjectWriteLockInput {
@@ -610,9 +626,9 @@ export interface InsertParticipantBindingInput {
   agent_ref: string;
   runtime_provider?: RuntimeProviderDto | null;
   task_role: ParticipantTaskRoleDto;
-  source?: string;
+  source?: ParticipantBindingSourceDto;
   join_status?: ParticipantBindingJoinStatusDto;
-  desired_exposure?: string;
+  desired_exposure?: 'in_thread' | 'hidden';
   exposure_reason?: string | null;
   exposure_stage_id?: string | null;
   reconciled_at?: string | null;
@@ -630,7 +646,7 @@ export interface UpsertRuntimeSessionBindingInput {
   continuity_ref?: string | null;
   presence_state: RuntimeSessionPresenceStateDto;
   binding_reason?: string | null;
-  desired_runtime_presence?: string;
+  desired_runtime_presence?: RuntimeSessionDesiredPresenceDto;
   reconcile_stage_id?: string | null;
   reconciled_at?: string | null;
   last_seen_at: string;
@@ -639,7 +655,7 @@ export interface UpsertRuntimeSessionBindingInput {
 
 export interface ReconcileRuntimeSessionBindingInput {
   binding_reason?: string | null;
-  desired_runtime_presence: string;
+  desired_runtime_presence: RuntimeSessionDesiredPresenceDto;
   reconcile_stage_id?: string | null;
   reconciled_at?: string | null;
 }

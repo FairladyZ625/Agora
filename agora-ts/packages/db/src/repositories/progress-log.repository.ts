@@ -53,6 +53,22 @@ export class ProgressLogRepository implements IProgressLogRepository {
     return rows.map((row) => this.parseRow(row));
   }
 
+  listLatestActivityByTaskIds(taskIds: string[]): Array<{
+    actor: string;
+    last_active_at: string | null;
+  }> {
+    if (taskIds.length === 0) {
+      return [];
+    }
+    const placeholders = taskIds.map(() => '?').join(', ');
+    return this.db.prepare(`
+      SELECT actor, MAX(created_at) AS last_active_at
+      FROM progress_log
+      WHERE task_id IN (${placeholders})
+      GROUP BY actor
+    `).all(...taskIds) as Array<{ actor: string; last_active_at: string | null }>;
+  }
+
   private getProgressLog(id: number): StoredProgressLog | null {
     const row = this.db.prepare('SELECT * FROM progress_log WHERE id = ?').get(id) as Record<string, unknown> | undefined;
     return row ? this.parseRow(row) : null;

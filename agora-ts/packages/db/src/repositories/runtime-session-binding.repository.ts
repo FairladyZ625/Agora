@@ -1,7 +1,9 @@
 import {
   type IRuntimeSessionBindingRepository,
   runtimeProviderSchema,
+  runtimeSessionDesiredPresenceSchema,
   runtimeSessionPresenceStateSchema,
+  type ReconcileRuntimeSessionBindingInput,
   type RuntimeSessionBindingRecord,
   type UpsertRuntimeSessionBindingInput,
 } from '@agora-ts/contracts';
@@ -73,12 +75,7 @@ export class RuntimeSessionBindingRepository implements IRuntimeSessionBindingRe
 
   reconcileByParticipant(
     participantBindingId: string,
-    input: {
-      binding_reason?: string | null;
-      desired_runtime_presence: string;
-      reconcile_stage_id?: string | null;
-      reconciled_at?: string | null;
-    },
+    input: ReconcileRuntimeSessionBindingInput,
   ): void {
     const current = this.getByParticipantBinding(participantBindingId);
     if (!current) {
@@ -109,7 +106,9 @@ export class RuntimeSessionBindingRepository implements IRuntimeSessionBindingRe
       continuity_ref: row.continuity_ref === null ? null : String(row.continuity_ref),
       presence_state: runtimeSessionPresenceStateSchema.parse(String(row.presence_state)),
       binding_reason: row.binding_reason === null || row.binding_reason === undefined ? null : String(row.binding_reason),
-      desired_runtime_presence: row.desired_runtime_presence === undefined ? 'attached' : String(row.desired_runtime_presence),
+      desired_runtime_presence: row.desired_runtime_presence === undefined
+        ? 'attached'
+        : runtimeSessionDesiredPresenceSchema.parse(String(row.desired_runtime_presence)),
       reconcile_stage_id: row.reconcile_stage_id === null || row.reconcile_stage_id === undefined ? null : String(row.reconcile_stage_id),
       reconciled_at: row.reconciled_at === null || row.reconciled_at === undefined ? null : String(row.reconciled_at),
       last_seen_at: String(row.last_seen_at),

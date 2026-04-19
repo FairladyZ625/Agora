@@ -1,4 +1,4 @@
-import type { AgentsStatusDto, ArchiveJobDto, ArchiveJobReceiptScanResponseDto, ArchiveJobScanResponseDto, ArchiveJobStatusUpdateRequestDto, CreateTodoRequestDto, CraftsmanExecutionRecord, DatabasePort, IArchiveJobRepository, ICraftsmanExecutionRepository, ISubtaskRepository, ITaskRepository, ITemplateRepository, ITodoRepository, SubtaskRecord, TemplateDetailDto, TemplateSummaryDto, UpdateTodoRequestDto } from '@agora-ts/contracts';
+import type { AgentsStatusDto, ArchiveJobDto, ArchiveJobReceiptScanResponseDto, ArchiveJobScanResponseDto, ArchiveJobStatusUpdateRequestDto, CreateTodoRequestDto, CraftsmanExecutionRecord, IArchiveJobRepository, ICraftsmanExecutionRepository, IProgressLogRepository, ISubtaskRepository, ITaskRepository, ITemplateRepository, ITodoRepository, SubtaskRecord, TemplateDetailDto, TemplateSummaryDto, UpdateTodoRequestDto } from '@agora-ts/contracts';
 import type { ArchiveJobNotifier, ArchiveJobReceiptIngestor } from './archive-job-notifier.js';
 import { NotFoundError } from './errors.js';
 import type { IMProvisioningPort } from './im-ports.js';
@@ -24,8 +24,8 @@ export interface DashboardQueryServiceOptions {
   archiveJobRepository: IArchiveJobRepository;
   todoRepository: ITodoRepository;
   executionRepository: ICraftsmanExecutionRepository;
+  progressLogRepository: IProgressLogRepository;
   templateRepository: ITemplateRepository;
-  databasePort: DatabasePort;
   archiveJobNotifier?: ArchiveJobNotifier;
   archiveJobReceiptIngestor?: ArchiveJobReceiptIngestor;
   imProvisioningPort?: IMProvisioningPort;
@@ -48,8 +48,8 @@ export class DashboardQueryService {
   private readonly archives: IArchiveJobRepository;
   private readonly todos: ITodoRepository;
   private readonly executions: ICraftsmanExecutionRepository;
+  private readonly progressLogs: IProgressLogRepository;
   private readonly templateRepository: ITemplateRepository;
-  private readonly db: DatabasePort;
   private readonly archiveJobNotifier: ArchiveJobNotifier | undefined;
   private readonly archiveJobReceiptIngestor: ArchiveJobReceiptIngestor | undefined;
   private readonly imProvisioningPort: IMProvisioningPort | undefined;
@@ -72,8 +72,8 @@ export class DashboardQueryService {
     this.archives = options.archiveJobRepository;
     this.todos = options.todoRepository;
     this.executions = options.executionRepository;
+    this.progressLogs = options.progressLogRepository;
     this.templateRepository = options.templateRepository;
-    this.db = options.databasePort;
     this.templateRepository.seedFromDir(options.templatesDir);
     this.templateRepository.repairMemberKindsFromDir(options.templatesDir);
     this.templateRepository.repairStageSemanticsFromDir(options.templatesDir);
@@ -197,13 +197,7 @@ export class DashboardQueryService {
     const executionsByTaskSubtask = new Map<string, CraftsmanExecutionRecord[]>();
 
     if (activeTasks.length > 0) {
-      const placeholders = activeTasks.map(() => '?').join(', ');
-      const rows = this.db.prepare(`
-        SELECT actor, MAX(created_at) AS last_active_at
-        FROM progress_log
-        WHERE task_id IN (${placeholders})
-        GROUP BY actor
-      `).all(...activeTasks.map((task) => task.id)) as Array<{ actor: string; last_active_at: string | null }>;
+      const rows = this.progressLogs.listLatestActivityByTaskIds(activeTaskIds);
       for (const row of rows) {
         activityMap.set(row.actor, row.last_active_at);
       }

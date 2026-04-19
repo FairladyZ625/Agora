@@ -6,6 +6,7 @@ import {
   ArchiveJobRepository,
   CraftsmanExecutionRepository,
   createAgoraDatabase,
+  ProgressLogRepository,
   runMigrations,
   TaskRepository,
   TemplateRepository,
@@ -48,8 +49,8 @@ describe('dashboard query service cc-connect live session projection', () => {
       archiveJobRepository: new ArchiveJobRepository(db),
       todoRepository: new TodoRepository(db),
       executionRepository: new CraftsmanExecutionRepository(db),
+      progressLogRepository: new ProgressLogRepository(db),
       templateRepository: new TemplateRepository(db),
-      databasePort: db,
       liveSessions,
     });
 

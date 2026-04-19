@@ -313,8 +313,8 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
     archiveJobRepository: new ArchiveJobRepository(db),
     todoRepository: new TodoRepository(db),
     executionRepository: new CraftsmanExecutionRepository(db),
+    progressLogRepository: new ProgressLogRepository(db),
     templateRepository: new TemplateRepository(db),
-    databasePort: db,
     archiveJobNotifier: new FileArchiveJobNotifier({ outboxDir: archiveOutboxDir }),
     archiveJobReceiptIngestor: new FileArchiveJobReceiptIngestor({ receiptDir: archiveReceiptDir }),
   });
