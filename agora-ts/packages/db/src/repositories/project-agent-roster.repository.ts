@@ -1,30 +1,18 @@
-import type { IProjectAgentRosterRepository } from '@agora-ts/contracts';
+import {
+  type IProjectAgentRosterRepository,
+  projectAgentRosterKindSchema,
+  projectAgentRosterStatusSchema,
+  type ProjectAgentRosterEntryRecord,
+  type UpsertProjectAgentRosterEntryInput,
+} from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
-export interface StoredProjectAgentRosterEntry {
-  id: string;
-  project_id: string;
-  agent_ref: string;
-  kind: string;
-  default_inclusion: boolean;
-  status: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface UpsertProjectAgentRosterEntryInput {
-  id: string;
-  project_id: string;
-  agent_ref: string;
-  kind: string;
-  default_inclusion?: boolean;
-  status?: string;
-}
+export type StoredProjectAgentRosterEntry = ProjectAgentRosterEntryRecord;
 
 export interface UpdateProjectAgentRosterEntryInput {
-  kind?: string;
+  kind?: ProjectAgentRosterEntryRecord['kind'];
   default_inclusion?: boolean;
-  status?: string;
+  status?: ProjectAgentRosterEntryRecord['status'];
 }
 
 export class ProjectAgentRosterRepository implements IProjectAgentRosterRepository {
@@ -69,7 +57,7 @@ export class ProjectAgentRosterRepository implements IProjectAgentRosterReposito
     return row ? this.parseRow(row) : null;
   }
 
-  listByProject(projectId: string, status?: string): StoredProjectAgentRosterEntry[] {
+  listByProject(projectId: string, status?: ProjectAgentRosterEntryRecord['status']): StoredProjectAgentRosterEntry[] {
     const rows = status
       ? this.db.prepare(
         'SELECT * FROM project_agent_rosters WHERE project_id = ? AND status = ? ORDER BY created_at ASC',
@@ -126,9 +114,9 @@ export class ProjectAgentRosterRepository implements IProjectAgentRosterReposito
       id: String(row.id),
       project_id: String(row.project_id),
       agent_ref: String(row.agent_ref),
-      kind: String(row.kind),
+      kind: projectAgentRosterKindSchema.parse(String(row.kind)),
       default_inclusion: Number(row.default_inclusion) === 1,
-      status: String(row.status),
+      status: projectAgentRosterStatusSchema.parse(String(row.status)),
       created_at: String(row.created_at),
       updated_at: String(row.updated_at),
     };

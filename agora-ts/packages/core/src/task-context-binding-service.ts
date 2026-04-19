@@ -37,6 +37,10 @@ export class TaskContextBindingService {
     return this.bindings.getActiveByTask(taskId);
   }
 
+  getBindingById(bindingId: string): TaskContextBindingRecord | null {
+    return this.bindings.getById(bindingId);
+  }
+
   getLatestBinding(taskId: string): TaskContextBindingRecord | null {
     return this.bindings.listByTask(taskId)[0] ?? null;
   }

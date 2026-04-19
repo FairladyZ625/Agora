@@ -272,7 +272,7 @@ export function createTaskServiceFromDb(
 
 export function createDashboardQueryServiceFromDb(
   db: AgoraDatabase,
-  options: Partial<Omit<DashboardQueryServiceOptions, 'taskRepository' | 'subtaskRepository' | 'archiveJobRepository' | 'todoRepository' | 'executionRepository' | 'templateRepository' | 'databasePort'>> & { templatesDir?: string } = {},
+  options: Partial<Omit<DashboardQueryServiceOptions, 'taskRepository' | 'subtaskRepository' | 'archiveJobRepository' | 'todoRepository' | 'executionRepository' | 'progressLogRepository' | 'templateRepository'>> & { templatesDir?: string } = {},
 ): DashboardQueryService {
   return new DashboardQueryService({
     templatesDir: options.templatesDir ?? DEFAULT_TEMPLATES_DIR,
@@ -281,8 +281,8 @@ export function createDashboardQueryServiceFromDb(
     archiveJobRepository: new ArchiveJobRepository(db),
     todoRepository: new TodoRepository(db),
     executionRepository: new CraftsmanExecutionRepository(db),
+    progressLogRepository: new ProgressLogRepository(db),
     templateRepository: new TemplateRepository(db),
-    databasePort: db,
     ...(options.archiveJobNotifier ? { archiveJobNotifier: options.archiveJobNotifier } : {}),
     ...(options.archiveJobReceiptIngestor ? { archiveJobReceiptIngestor: options.archiveJobReceiptIngestor } : {}),
     ...(options.imProvisioningPort ? { imProvisioningPort: options.imProvisioningPort } : {}),

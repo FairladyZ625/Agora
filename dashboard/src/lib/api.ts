@@ -1512,6 +1512,7 @@ export function createProject(input: {
   owner: string;
   summary?: string | null;
   status?: string;
+  nomos_id?: string;
   metadata?: Record<string, unknown>;
   admins?: Array<{ account_id: number }>;
   members?: Array<{ account_id: number; role: 'admin' | 'member' }>;

@@ -31,21 +31,21 @@ export function LegacyTasksRedirectPage() {
   const [loading, setLoading] = useState(Boolean(taskId));
 
   const directHref = useMemo(() => {
-    const legacyTaskId = taskId;
-    if (!legacyTaskId) {
+    const resolvedTaskId = taskId;
+    if (!resolvedTaskId) {
       return buildProjectWorkHref();
     }
-    const projectId = resolveProjectIdFromStores(legacyTaskId, tasks, selectedProject) ?? resolvedProjectId;
-    return projectId ? buildProjectTaskHref(legacyTaskId, projectId) : null;
+    const projectId = resolveProjectIdFromStores(resolvedTaskId, tasks, selectedProject) ?? resolvedProjectId;
+    return projectId ? buildProjectTaskHref(resolvedTaskId, projectId) : null;
   }, [resolvedProjectId, selectedProject, taskId, tasks]);
 
   useEffect(() => {
-    const legacyTaskId = taskId;
-    if (!legacyTaskId || directHref) {
+    const resolvedTaskId = taskId;
+    if (!resolvedTaskId || directHref) {
       setLoading(false);
       return;
     }
-    const resolvedTaskId: string = legacyTaskId;
+    const lookupTaskId = resolvedTaskId;
     let cancelled = false;
 
     async function resolveFromApis() {
@@ -54,7 +54,7 @@ export function LegacyTasksRedirectPage() {
         if (tasks.length === 0) {
           await fetchTasks();
         }
-        const task = await api.getTask(resolvedTaskId);
+        const task = await api.getTask(lookupTaskId);
         if (!cancelled) {
           setResolvedProjectId(task.project_id ?? null);
         }

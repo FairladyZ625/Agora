@@ -161,11 +161,16 @@ describe('project store', () => {
       name: 'Project Alpha Fresh',
       owner: 'archon',
       summary: 'Fresh',
+      nomos_id: 'agora/default',
     });
 
     expect(created.name).toBe('Project Alpha Fresh');
     expect(useProjectStore.getState().projects).toHaveLength(1);
     expect(useProjectStore.getState().projects[0]?.name).toBe('Project Alpha Fresh');
+    expect(api.createProject).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Project Alpha Fresh',
+      nomos_id: 'agora/default',
+    }));
     expect(useProjectStore.getState().creating).toBe(false);
   });
 

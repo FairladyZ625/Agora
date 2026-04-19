@@ -698,7 +698,7 @@ describe('dashboard expansion api client', () => {
       audience: 'controller',
       task_id: 'OC-001',
     });
-    await api.createProject({ name: 'Project Beta', owner: 'archon', summary: 'New project' });
+    await api.createProject({ name: 'Project Beta', owner: 'archon', summary: 'New project', nomos_id: 'agora/default' });
     await api.listTasks(undefined, 'proj-alpha');
 
     expect(workbench.surfaces.timeline).toMatchObject({
@@ -726,7 +726,7 @@ describe('dashboard expansion api client', () => {
     });
     expectFetchCall('/api/projects', {
       method: 'POST',
-      body: JSON.stringify({ name: 'Project Beta', owner: 'archon', summary: 'New project' }),
+      body: JSON.stringify({ name: 'Project Beta', owner: 'archon', summary: 'New project', nomos_id: 'agora/default' }),
     });
     expectFetchCall('/api/tasks?project_id=proj-alpha', { method: 'GET' });
   });

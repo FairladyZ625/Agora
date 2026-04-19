@@ -45,6 +45,8 @@ import {
   TaskInboundService,
   TaskContextBindingService,
   TaskParticipationService,
+  RuntimeThreadMessageRouter,
+  type RuntimeThreadMessageInput,
   resolveCraftsmanRuntimeMode,
   TaskService,
   TemplateAuthoringService,
@@ -54,7 +56,11 @@ import {
   type IMProvisioningPort,
   type PresenceSource,
 } from '@agora-ts/core';
-import { CcConnectAgentRegistry, CcConnectCitizenProjectionAdapter, CcConnectManagementPresenceSource, CcConnectSessionMirrorService } from '@agora-ts/adapters-cc-connect';
+import {
+  CcConnectAgentRegistry,
+  CcConnectManagementPresenceSource,
+  CcConnectSessionMirrorService,
+} from '@agora-ts/adapters-cc-connect';
 import { FilesystemContextSourceRetrievalAdapter, FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter } from '@agora-ts/adapters-brain';
 import { ProjectContextBriefingMaterializer, RuntimeRepoShimMaterializer } from '@agora-ts/adapters-materialization';
 import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
@@ -104,6 +110,18 @@ type RuntimeEnvironment = {
   projectRoot: string;
 };
 
+type CcConnectBridgeRuntimeController = {
+  readonly runtime_provider: 'cc-connect';
+  start(): void;
+  stop(): void;
+  sendInboundMessage(input: RuntimeThreadMessageInput): Promise<void>;
+};
+
+type DiscordThreadIngressController = {
+  start(): void;
+  stop(): void;
+};
+
 export interface ServerCompositionContext {
   config: AgoraConfig;
   runtimeEnv: RuntimeEnvironment;
@@ -136,10 +154,13 @@ export interface ServerComposition {
   taskParticipationService: TaskParticipationService;
   humanAccountService: HumanAccountService;
   notificationDispatcher: NotificationDispatcher;
+  imProvisioningPort?: IMProvisioningPort;
   taskConversationService: TaskConversationService;
   taskInboundService: TaskInboundService;
   ccConnectSessionMirrorService?: CcConnectSessionMirrorService;
+  ccConnectBridgeRuntimeService?: CcConnectBridgeRuntimeController;
   discordPresenceService?: DiscordGatewayPresenceService;
+  discordThreadIngressService?: DiscordThreadIngressController;
 }
 
 export interface ServerCompositionFactories {
@@ -244,9 +265,22 @@ export interface ServerCompositionFactories {
   createTaskConversationService: (context: ServerCompositionContext) => TaskConversationService;
   createTaskInboundService: (
     context: ServerCompositionContext,
-    deps: { taskConversationService: TaskConversationService; taskContextBindingService: TaskContextBindingService; taskService: TaskService },
+    deps: {
+      taskConversationService: TaskConversationService;
+      taskContextBindingService: TaskContextBindingService;
+      taskService: TaskService;
+      taskParticipationService: TaskParticipationService;
+      runtimeThreadMessageRouter?: RuntimeThreadMessageRouter;
+    },
   ) => TaskInboundService;
   createDiscordPresenceService: (context: ServerCompositionContext) => DiscordGatewayPresenceService | undefined;
+  createDiscordThreadIngressService?: (
+    context: ServerCompositionContext,
+    deps: {
+      taskContextBindingService: TaskContextBindingService;
+      taskInboundService: TaskInboundService;
+    },
+  ) => DiscordThreadIngressController | undefined;
   createCcConnectSessionMirrorService?: (
     context: ServerCompositionContext,
     deps: {
@@ -254,6 +288,16 @@ export interface ServerCompositionFactories {
       taskParticipationService: TaskParticipationService;
     },
   ) => CcConnectSessionMirrorService | undefined;
+  createCcConnectBridgeRuntimeService?: (
+    context: ServerCompositionContext,
+    deps: {
+      imProvisioningPort: IMProvisioningPort | undefined;
+      taskConversationService: TaskConversationService;
+      taskContextBindingService: TaskContextBindingService;
+      taskParticipationService: TaskParticipationService;
+      liveSessionStore: LiveSessionStore;
+    },
+  ) => CcConnectBridgeRuntimeController | undefined;
 }
 
 export function ensureRuntimeBrainPackRoot(projectRoot: string): string {
@@ -475,8 +519,8 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       archiveJobRepository: new ArchiveJobRepository(context.db),
       todoRepository: new TodoRepository(context.db),
       executionRepository: new CraftsmanExecutionRepository(context.db),
+      progressLogRepository: new ProgressLogRepository(context.db),
       templateRepository: new TemplateRepository(context.db),
-      databasePort: context.db,
       ...(deps.archiveJobNotifier ? { archiveJobNotifier: deps.archiveJobNotifier } : {}),
       ...(deps.archiveJobReceiptIngestor ? { archiveJobReceiptIngestor: deps.archiveJobReceiptIngestor } : {}),
       taskBrainBindingService: deps.taskBrainBindingService,
@@ -561,7 +605,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       repository: new CitizenRepository(context.db),
       projectService: deps.projectService,
       rolePackService: deps.rolePackService,
-      projectionPorts: [new OpenClawCitizenProjectionAdapter(), new CcConnectCitizenProjectionAdapter()],
+      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
     }),
     createProjectBrainService: (context, deps) => new ProjectBrainService({
       projectService: deps.projectService,
@@ -635,6 +679,8 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       deps.taskConversationService,
       deps.taskContextBindingService,
       deps.taskService,
+      deps.taskParticipationService,
+      deps.runtimeThreadMessageRouter,
     ),
     createDiscordPresenceService: (context) => {
       const { im } = context.config;
@@ -653,7 +699,9 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         },
       });
     },
+    createDiscordThreadIngressService: () => undefined,
     createCcConnectSessionMirrorService: () => undefined,
+    createCcConnectBridgeRuntimeService: () => undefined,
   };
 }
 
@@ -742,12 +790,28 @@ export function buildServerComposition(
   const inboxService = factories.createInboxService(context, { taskService });
   const notificationDispatcher = factories.createNotificationDispatcher(context, { messagingPort });
   const taskConversationService = factories.createTaskConversationService(context);
+  const ccConnectBridgeRuntimeService = factories.createCcConnectBridgeRuntimeService?.(context, {
+    imProvisioningPort,
+    taskConversationService,
+    taskContextBindingService,
+    taskParticipationService,
+    liveSessionStore,
+  });
+  const runtimeThreadMessageRouter = new RuntimeThreadMessageRouter(
+    ccConnectBridgeRuntimeService ? [ccConnectBridgeRuntimeService] : [],
+  );
   const taskInboundService = factories.createTaskInboundService(context, {
     taskConversationService,
     taskContextBindingService,
     taskService,
+    taskParticipationService,
+    runtimeThreadMessageRouter,
   });
   const discordPresenceService = factories.createDiscordPresenceService(context);
+  const discordThreadIngressService = factories.createDiscordThreadIngressService?.(context, {
+    taskContextBindingService,
+    taskInboundService,
+  });
   const ccConnectSessionMirrorService = overrides.createCcConnectSessionMirrorService
     ? overrides.createCcConnectSessionMirrorService(context, {
         liveSessionStore,
@@ -782,10 +846,13 @@ export function buildServerComposition(
     taskParticipationService,
     humanAccountService,
     notificationDispatcher,
+    ...(imProvisioningPort ? { imProvisioningPort } : {}),
     taskConversationService,
     taskInboundService,
     ...(ccConnectSessionMirrorService ? { ccConnectSessionMirrorService } : {}),
+    ...(ccConnectBridgeRuntimeService ? { ccConnectBridgeRuntimeService } : {}),
     ...(discordPresenceService ? { discordPresenceService } : {}),
+    ...(discordThreadIngressService ? { discordThreadIngressService } : {}),
   };
 }
 

@@ -5,6 +5,7 @@ import { useProjectsPageCopy } from '@/lib/dashboardCopy';
 import {
   filterProjectsForWorkbench,
   pickProjectsPageSelection,
+  readProjectsPageSelection,
   sortProjectsForWorkbench,
   type ProjectsPageSortKey,
   writeProjectsPageSelection,
@@ -12,6 +13,8 @@ import {
 import { mapProjectWorkbenchDto, mapWorkspaceBootstrapStatusDto } from '@/lib/projectMappers';
 import { useProjectStore } from '@/stores/projectStore';
 import type { ProjectWorkbench, WorkspaceBootstrapStatus } from '@/types/project';
+
+const DEFAULT_PROJECT_NOMOS_ID = 'agora/default';
 
 function parseAccountIds(value: string) {
   return value
@@ -61,8 +64,8 @@ export function ProjectsPage() {
   const [workspaceBootstrap, setWorkspaceBootstrap] = useState<WorkspaceBootstrapStatus | null>(null);
   const [query, setQuery] = useState('');
   const [sortKey, setSortKey] = useState<ProjectsPageSortKey>('updated');
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => pickProjectsPageSelection(projects, 'updated'));
-  const [briefingsByProject, setBriefingsByProject] = useState<Record<string, ProjectWorkbench>>({});
+  const [requestedSelectedProjectId, setRequestedSelectedProjectId] = useState<string | null>(() => readProjectsPageSelection());
+  const [prefetchedBriefingsByProject, setPrefetchedBriefingsByProject] = useState<Record<string, ProjectWorkbench>>({});
   const prefetchingProjectIdsRef = useRef<Set<string>>(new Set());
   const projectsPageMountedRef = useRef(true);
 
@@ -94,35 +97,19 @@ export function ProjectsPage() {
     projectsPageMountedRef.current = false;
   }, []);
 
-  useEffect(() => {
+  const briefingsByProject = useMemo(() => {
     const cachedProject = buildProjectCache(selectedProject);
     if (!cachedProject) {
-      return;
+      return prefetchedBriefingsByProject;
     }
-    setBriefingsByProject((current) => {
-      if (current[cachedProject.project.id] === cachedProject) {
-        return current;
-      }
-      return {
-        ...current,
-        [cachedProject.project.id]: cachedProject,
-      };
-    });
-  }, [selectedProject]);
-
-  useEffect(() => {
-    if (projects.length === 0) {
-      setSelectedProjectId(null);
-      return;
+    if (prefetchedBriefingsByProject[cachedProject.project.id] === cachedProject) {
+      return prefetchedBriefingsByProject;
     }
-
-    setSelectedProjectId((current) => {
-      if (current && projects.some((project) => project.id === current)) {
-        return current;
-      }
-      return pickProjectsPageSelection(projects, sortKey, briefingsByProject);
-    });
-  }, [briefingsByProject, projects, sortKey]);
+    return {
+      ...prefetchedBriefingsByProject,
+      [cachedProject.project.id]: cachedProject,
+    };
+  }, [prefetchedBriefingsByProject, selectedProject]);
 
   const filteredProjects = useMemo(
     () => filterProjectsForWorkbench(projects, query),
@@ -133,14 +120,15 @@ export function ProjectsPage() {
     [briefingsByProject, filteredProjects, sortKey],
   );
 
-  useEffect(() => {
-    if (!visibleProjects.length) {
-      return;
+  const selectedProjectId = useMemo(() => {
+    if (projects.length === 0 || visibleProjects.length === 0) {
+      return null;
     }
-    if (!selectedProjectId || !visibleProjects.some((project) => project.id === selectedProjectId)) {
-      setSelectedProjectId(visibleProjects[0].id);
+    if (requestedSelectedProjectId && visibleProjects.some((project) => project.id === requestedSelectedProjectId)) {
+      return requestedSelectedProjectId;
     }
-  }, [selectedProjectId, visibleProjects]);
+    return pickProjectsPageSelection(visibleProjects, sortKey, briefingsByProject);
+  }, [briefingsByProject, projects.length, requestedSelectedProjectId, sortKey, visibleProjects]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -172,7 +160,7 @@ export function ProjectsPage() {
         return;
       }
 
-      setBriefingsByProject((current) => {
+      setPrefetchedBriefingsByProject((current) => {
         const next = { ...current };
         for (const result of results) {
           if (result.status === 'fulfilled' && result.value.workbench) {
@@ -222,6 +210,7 @@ export function ProjectsPage() {
         name: name.trim(),
         owner: 'archon',
         summary: summary.trim() || null,
+        nomos_id: DEFAULT_PROJECT_NOMOS_ID,
         admins: adminIds.map((account_id) => ({ account_id })),
         members: memberIds
           .filter((account_id) => !adminIds.includes(account_id))
@@ -295,6 +284,15 @@ export function ProjectsPage() {
                 placeholder={copy.summaryPlaceholder}
               />
             </label>
+            <div className="space-y-2 lg:col-span-2">
+              <span className="field-label">{copy.createNomosLabel}</span>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="status-pill status-pill--neutral">
+                  {copy.createNomosValueLabel}: {DEFAULT_PROJECT_NOMOS_ID}
+                </span>
+                <p className="type-body-sm">{copy.createNomosHint}</p>
+              </div>
+            </div>
             <label className="space-y-2">
               <span className="field-label">{copy.adminAccountsLabel}</span>
               <input
@@ -378,7 +376,7 @@ export function ProjectsPage() {
                         type="button"
                         className="projects-page__row-button"
                         aria-label={copy.selectProjectAction(project.name)}
-                        onClick={() => setSelectedProjectId(project.id)}
+                  onClick={() => setRequestedSelectedProjectId(project.id)}
                       >
                         <div className="dense-row__main">
                           <div className="dense-row__titleblock">

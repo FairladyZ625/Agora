@@ -10,7 +10,9 @@ import { ProjectsPage } from '@/pages/ProjectsPage';
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage';
 import { ProjectBrainPage } from '@/pages/ProjectBrainPage';
 import { ProjectCurrentWorkPage } from '@/pages/ProjectCurrentWorkPage';
-import { ProjectWorkspacePlaceholderPage } from '@/pages/ProjectWorkspacePlaceholderPage';
+import { ProjectKnowledgePage } from '@/pages/ProjectKnowledgePage';
+import { ProjectArchiveWorkspacePage } from '@/pages/ProjectArchiveWorkspacePage';
+import { ProjectOperatorPage } from '@/pages/ProjectOperatorPage';
 import { WorkspaceBootstrapPage } from '@/pages/WorkspaceBootstrapPage';
 import { LegacyTasksRedirectPage } from '@/pages/LegacyTasksRedirectPage';
 import { CreateTaskPage } from '@/pages/CreateTaskPage';
@@ -62,33 +64,9 @@ export default function App() {
           <Route path="work/:taskId" element={<ProjectCurrentWorkPage />} />
           <Route path="context" element={<ProjectBrainPage />} />
           <Route path="brain" element={<Navigate to="../context" replace />} />
-          <Route
-            path="knowledge"
-            element={
-              <ProjectWorkspacePlaceholderPage
-                title="Knowledge"
-                summary="Project-scoped durable knowledge surface will move here."
-              />
-            }
-          />
-          <Route
-            path="archive"
-            element={
-              <ProjectWorkspacePlaceholderPage
-                title="Archive"
-                summary="Project-scoped archive surface will be aligned after shell cutover."
-              />
-            }
-          />
-          <Route
-            path="operator"
-            element={
-              <ProjectWorkspacePlaceholderPage
-                title="Operator"
-                summary="Project-scoped operator controls will move here."
-              />
-            }
-          />
+          <Route path="knowledge" element={<ProjectKnowledgePage />} />
+          <Route path="archive" element={<ProjectArchiveWorkspacePage />} />
+          <Route path="operator" element={<ProjectOperatorPage />} />
         </Route>
         <Route path="/agents" element={<AgentsPage />} />
         <Route path="/bridges" element={<ExternalBridgesPage />} />

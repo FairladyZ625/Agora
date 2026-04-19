@@ -1,31 +1,14 @@
-import type { IProjectMembershipRepository } from '@agora-ts/contracts';
+import {
+  type IProjectMembershipRepository,
+  projectMembershipRoleSchema,
+  projectMembershipStatusSchema,
+  type ProjectMembershipRecord,
+  type UpdateProjectMembershipInput,
+  type UpsertProjectMembershipInput,
+} from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
-export interface StoredProjectMembership {
-  id: string;
-  project_id: string;
-  account_id: number;
-  role: string;
-  status: string;
-  added_by_account_id: number | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface UpsertProjectMembershipInput {
-  id: string;
-  project_id: string;
-  account_id: number;
-  role: string;
-  status?: string;
-  added_by_account_id?: number | null;
-}
-
-export interface UpdateProjectMembershipInput {
-  role?: string;
-  status?: string;
-  added_by_account_id?: number | null;
-}
+export type StoredProjectMembership = ProjectMembershipRecord;
 
 export class ProjectMembershipRepository implements IProjectMembershipRepository {
   constructor(private readonly db: AgoraDatabase) {}
@@ -69,7 +52,7 @@ export class ProjectMembershipRepository implements IProjectMembershipRepository
     return row ? this.parseRow(row) : null;
   }
 
-  listByProject(projectId: string, status?: string): StoredProjectMembership[] {
+  listByProject(projectId: string, status?: ProjectMembershipRecord['status']): StoredProjectMembership[] {
     const rows = status
       ? this.db.prepare(
         'SELECT * FROM project_memberships WHERE project_id = ? AND status = ? ORDER BY created_at ASC',
@@ -126,8 +109,8 @@ export class ProjectMembershipRepository implements IProjectMembershipRepository
       id: String(row.id),
       project_id: String(row.project_id),
       account_id: Number(row.account_id),
-      role: String(row.role),
-      status: String(row.status),
+      role: projectMembershipRoleSchema.parse(String(row.role)),
+      status: projectMembershipStatusSchema.parse(String(row.status)),
       added_by_account_id: row.added_by_account_id === null ? null : Number(row.added_by_account_id),
       created_at: String(row.created_at),
       updated_at: String(row.updated_at),

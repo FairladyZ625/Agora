@@ -246,6 +246,10 @@ export interface IProgressLogRepository {
     actor: string;
   }): ProgressLogRecord;
   listByTask(taskId: string): ProgressLogRecord[];
+  listLatestActivityByTaskIds(taskIds: string[]): Array<{
+    actor: string;
+    last_active_at: string | null;
+  }>;
 }
 
 // ─── 5. Todo ──────────────────────────────────────────────────────────────
@@ -621,6 +625,7 @@ export interface IHumanIdentityBindingRepository {
 
 export interface IParticipantBindingRepository {
   insert(input: InsertParticipantBindingInput): ParticipantBindingRecord;
+  getById(id: string): ParticipantBindingRecord | null;
   listByTask(taskId: string): ParticipantBindingRecord[];
   getByTaskAndAgent(
     taskId: string,
@@ -628,7 +633,7 @@ export interface IParticipantBindingRepository {
   ): ParticipantBindingRecord | null;
   updateJoinState(
     id: string,
-    joinStatus: string,
+    joinStatus: ParticipantBindingRecord['join_status'],
     timestamps?: {
       joined_at?: string | null;
       left_at?: string | null;
@@ -637,7 +642,7 @@ export interface IParticipantBindingRepository {
   updateExposureState(
     id: string,
     input: {
-      desired_exposure: string;
+      desired_exposure: ParticipantBindingRecord['desired_exposure'];
       exposure_reason?: string | null;
       exposure_stage_id?: string | null;
       reconciled_at?: string | null;
