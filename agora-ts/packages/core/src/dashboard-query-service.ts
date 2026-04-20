@@ -332,6 +332,10 @@ export class DashboardQueryService {
       current.last_seen_at = session.last_event_at;
       current.load = Math.max(current.load, 1);
       current.host_framework = current.host_framework ?? sessionSource;
+      const relayHealth = extractRelayHealth(session.metadata);
+      if (relayHealth) {
+        current.relay_health = relayHealth;
+      }
       mergeUnique(current.inventory_sources, sessionSource);
       const channelProvider = normalizeChannelProvider(session.channel);
       if (channelProvider && channelProvider !== session.agent_id) {
@@ -433,6 +437,7 @@ export class DashboardQueryService {
           ...(item.runtime_flavor !== undefined ? { runtime_flavor: item.runtime_flavor } : {}),
           ...(item.runtime_target_ref !== undefined ? { runtime_target_ref: item.runtime_target_ref } : {}),
           ...((item.discord_bot_user_ids?.length ?? 0) > 0 ? { discord_bot_user_ids: item.discord_bot_user_ids } : {}),
+          ...(item.relay_health ? { relay_health: item.relay_health } : {}),
         };
         const selectability = deriveAgentSelectability(normalized);
         return {
@@ -893,6 +898,37 @@ function normalizeChannelProvider(value?: string | null) {
     return null;
   }
   return normalized;
+}
+
+type RelayHealthView = {
+  reply_observed_at?: string;
+  discord_publish_status?: 'succeeded' | 'failed';
+  discord_publish_at?: string;
+  reply_ctx?: string;
+  error?: string;
+};
+
+function extractRelayHealth(metadata: Record<string, unknown> | null | undefined): RelayHealthView | null {
+  const relayHealth = asRecord(metadata?.relay_health);
+  if (!relayHealth) {
+    return null;
+  }
+  const discordPublishStatus = relayHealth.discord_publish_status === 'succeeded' || relayHealth.discord_publish_status === 'failed'
+    ? relayHealth.discord_publish_status
+    : null;
+  return {
+    ...(typeof relayHealth.reply_observed_at === 'string' ? { reply_observed_at: relayHealth.reply_observed_at } : {}),
+    ...(discordPublishStatus ? { discord_publish_status: discordPublishStatus } : {}),
+    ...(typeof relayHealth.discord_publish_at === 'string' ? { discord_publish_at: relayHealth.discord_publish_at } : {}),
+    ...(typeof relayHealth.reply_ctx === 'string' ? { reply_ctx: relayHealth.reply_ctx } : {}),
+    ...(typeof relayHealth.error === 'string' ? { error: relayHealth.error } : {}),
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }
 
 function mergeUnique(target: string[], value: string | null) {

@@ -8,14 +8,17 @@ import {
   ProjectContextWriter,
   ProjectMembershipService,
   ProjectService,
+  LiveSessionStore,
   RuntimeThreadMessageRouter,
   StubIMProvisioningPort,
   TaskAuthorityService,
   TaskContextBindingService,
+  TaskConversationService,
   TaskParticipationService,
   TaskService,
   type RuntimeThreadMessageInput,
 } from '../packages/core/src/index.js';
+import { CcConnectBridgeReplyRelayService } from '../packages/adapters-cc-connect/src/bridge-reply-relay.js';
 import {
   ApprovalRequestRepository,
   ArchiveJobRepository,
@@ -37,6 +40,7 @@ import {
   TaskAuthorityRepository,
   TaskBrainBindingRepository,
   TaskContextBindingRepository,
+  TaskConversationReadCursorRepository,
   TaskConversationRepository,
   TaskRepository,
   TemplateRepository,
@@ -49,6 +53,12 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
 async function main() {
@@ -226,8 +236,72 @@ async function main() {
     assert(routed[0]?.thread_ref === 'discord-thread-external-dispatch-1', 'external runtime dispatch should preserve the task thread');
     assert(routed[0]?.body === roleBrief.body, 'external runtime dispatch should reuse the canonical role brief body');
 
+    const participant = participants.find((item) => item.agent_ref === agentRef);
+    assert(participant, 'expected seeded cc-connect participant');
+    const sessionKey = `agora-discord:discord-thread-external-dispatch-1:${participant.id}`;
+    taskParticipationService.bindRuntimeSession({
+      participant_binding_id: participant.id,
+      runtime_provider: 'cc-connect',
+      runtime_session_ref: sessionKey,
+      runtime_actor_ref: agentRef,
+      presence_state: 'active',
+      binding_reason: 'smoke_reply_relay',
+      last_seen_at: '2026-04-20T00:00:00.000Z',
+    });
+    const liveSessionStore = new LiveSessionStore({
+      now: () => new Date('2026-04-20T00:00:05.000Z'),
+    });
+    liveSessionStore.upsert({
+      source: 'cc-connect',
+      agent_id: agentRef,
+      session_key: sessionKey,
+      channel: 'discord',
+      conversation_id: 'discord-parent-channel',
+      thread_id: 'discord-thread-external-dispatch-1',
+      status: 'active',
+      last_event: 'thread_bridge_dispatch',
+      last_event_at: '2026-04-20T00:00:00.000Z',
+      metadata: {
+        project: 'agora-codex',
+        runtime_flavor: 'codex',
+        runtime_target_ref: agentRef,
+      },
+    });
+    const taskConversationService = new TaskConversationService({
+      bindingRepository: taskContextBindingRepository,
+      conversationRepository: taskConversationRepository,
+      readCursorRepository: new TaskConversationReadCursorRepository(db),
+      idGenerator: () => 'entry-relay-smoke-1',
+      now: () => new Date('2026-04-20T00:00:05.000Z'),
+    });
+    const relay = new CcConnectBridgeReplyRelayService({
+      bridgeClient: { onEvent: () => () => undefined },
+      imProvisioningPort,
+      liveSessionStore,
+      taskConversationService,
+      taskContextBindingService,
+      taskParticipationService,
+      now: () => new Date('2026-04-20T00:00:05.000Z'),
+    });
+    await relay.handleEvent({
+      type: 'reply',
+      session_key: sessionKey,
+      reply_ctx: routed[0].entry_id,
+      content: 'Relay smoke reply from cc-connect.',
+      format: 'text',
+    });
+
+    const relayPublish = imProvisioningPort.published.find((batch) => (
+      batch.messages.some((message) => message.kind === 'cc_connect_reply')
+    ));
+    assert(relayPublish, 'expected cc-connect reply relay publish batch');
+    assert(relayPublish.messages[0]?.body === 'Relay smoke reply from cc-connect.', 'expected relay publish body');
+    const relayHealth = asRecord(liveSessionStore.get(sessionKey)?.metadata).relay_health;
+    assert(asRecord(relayHealth).discord_publish_status === 'succeeded', 'expected relay health publish success');
+
     const entries = taskConversationRepository.listByTask('OC-EXTERNAL-DISPATCH-1');
     assert(entries.some((entry) => entry.body.includes('角色简报 cc-connect:agora-codex')), 'conversation mirror should include role brief');
+    assert(entries.some((entry) => entry.body.includes('Relay smoke reply from cc-connect.')), 'conversation mirror should include relayed cc-connect reply');
 
     console.log(JSON.stringify({
       ok: true,
@@ -236,6 +310,7 @@ async function main() {
       external_agent_ref: routed[0].agent_ref,
       im_bootstrap_messages: messages.map((message) => message.kind),
       external_dispatch_count: routed.length,
+      relay_health: relayHealth,
     }, null, 2));
   } finally {
     db.close();

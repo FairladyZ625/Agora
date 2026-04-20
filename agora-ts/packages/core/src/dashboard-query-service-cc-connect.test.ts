@@ -79,7 +79,15 @@ describe('dashboard query service cc-connect live session projection', () => {
       status: 'active',
       last_event: 'cc_connect_session_active',
       last_event_at: '2026-04-09T14:00:00.000Z',
-      metadata: { project: 'agora-codex' },
+      metadata: {
+        project: 'agora-codex',
+        relay_health: {
+          reply_observed_at: '2026-04-09T14:00:05.000Z',
+          discord_publish_status: 'succeeded',
+          discord_publish_at: '2026-04-09T14:00:05.000Z',
+          reply_ctx: 'ctx-1',
+        },
+      },
     });
 
     const agentsStatus = queries.getAgentsStatus();
@@ -97,6 +105,12 @@ describe('dashboard query service cc-connect live session projection', () => {
         primary_model: 'gpt-5.4',
         workspace_dir: '/repo/agora',
         discord_bot_user_ids: ['1491781344664227942'],
+        relay_health: {
+          reply_observed_at: '2026-04-09T14:00:05.000Z',
+          discord_publish_status: 'succeeded',
+          discord_publish_at: '2026-04-09T14:00:05.000Z',
+          reply_ctx: 'ctx-1',
+        },
         status: 'busy',
         presence: 'online',
       }),

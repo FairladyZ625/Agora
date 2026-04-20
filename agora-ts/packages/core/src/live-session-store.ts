@@ -20,6 +20,10 @@ export class LiveSessionStore {
     return session;
   }
 
+  get(sessionKey: string) {
+    return this.sessions.get(sessionKey) ?? null;
+  }
+
   end(sessionKey: string, endedAt: string, event = 'session_end') {
     const current = this.sessions.get(sessionKey);
     if (!current) {

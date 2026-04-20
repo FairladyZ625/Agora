@@ -9,6 +9,7 @@ describe('CcConnectBridgeReplyRelayService', () => {
       id: 'entry-outbound-1',
       task_id: 'OC-RELAY-1',
     });
+    const upsert = vi.fn();
     const service = new CcConnectBridgeReplyRelayService({
       bridgeClient: {
         onEvent(listener) {
@@ -20,6 +21,25 @@ describe('CcConnectBridgeReplyRelayService', () => {
       },
       imProvisioningPort: {
         publishMessages,
+      },
+      liveSessionStore: {
+        get: () => ({
+          source: 'cc-connect',
+          agent_id: 'cc-connect:agora-codex',
+          session_key: 'agora-discord:thread-1:participant-1',
+          channel: 'discord',
+          conversation_id: 'forum-1',
+          thread_id: 'thread-1',
+          status: 'active',
+          last_event: 'thread_bridge_dispatch',
+          last_event_at: '2026-04-14T08:00:00.000Z',
+          metadata: {
+            project: 'agora-codex',
+            runtime_flavor: 'codex',
+            runtime_target_ref: 'cc-connect:agora-codex',
+          },
+        }),
+        upsert,
       },
       taskConversationService: {
         ingest,
@@ -97,6 +117,28 @@ describe('CcConnectBridgeReplyRelayService', () => {
       author_ref: 'cc-connect:agora-codex',
       body: 'Done. Here is the summary.',
     }));
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'cc-connect',
+      agent_id: 'cc-connect:agora-codex',
+      session_key: 'agora-discord:thread-1:participant-1',
+      channel: 'discord',
+      conversation_id: 'forum-1',
+      thread_id: 'thread-1',
+      status: 'active',
+      last_event: 'cc_connect_reply_relay_published',
+      last_event_at: '2026-04-14T08:00:10.000Z',
+      metadata: expect.objectContaining({
+        project: 'agora-codex',
+        runtime_flavor: 'codex',
+        runtime_target_ref: 'cc-connect:agora-codex',
+        relay_health: {
+          reply_observed_at: '2026-04-14T08:00:10.000Z',
+          discord_publish_status: 'succeeded',
+          discord_publish_at: '2026-04-14T08:00:10.000Z',
+          reply_ctx: 'ctx-1',
+        },
+      }),
+    }));
   });
 
   it('ignores replies for unknown or mismatched runtime sessions', async () => {
@@ -126,6 +168,108 @@ describe('CcConnectBridgeReplyRelayService', () => {
 
     expect(publishMessages).not.toHaveBeenCalled();
     expect(ingest).not.toHaveBeenCalled();
+  });
+
+  it('records publish failures without ingesting an outbound conversation entry', async () => {
+    const publishMessages = vi.fn().mockRejectedValue(new Error('Discord publish failed: 403 missing access'));
+    const ingest = vi.fn();
+    const upsert = vi.fn();
+    const service = new CcConnectBridgeReplyRelayService({
+      bridgeClient: { onEvent: () => () => undefined },
+      imProvisioningPort: { publishMessages },
+      liveSessionStore: {
+        get: () => ({
+          source: 'cc-connect',
+          agent_id: 'cc-connect:agora-codex',
+          session_key: 'agora-discord:thread-1:participant-1',
+          channel: 'discord',
+          conversation_id: 'forum-1',
+          thread_id: 'thread-1',
+          status: 'active',
+          last_event: 'thread_bridge_dispatch',
+          last_event_at: '2026-04-14T08:00:00.000Z',
+          metadata: {
+            project: 'agora-codex',
+          },
+        }),
+        upsert,
+      },
+      taskConversationService: { ingest },
+      taskContextBindingService: {
+        getBindingById: () => ({
+          id: 'binding-1',
+          task_id: 'OC-RELAY-1',
+          im_provider: 'discord',
+          conversation_ref: 'forum-1',
+          thread_ref: 'thread-1',
+          message_root_ref: null,
+          status: 'active',
+          created_at: '2026-04-14T08:00:00.000Z',
+          closed_at: null,
+        }),
+        getActiveBinding: () => null,
+      },
+      taskParticipationService: {
+        getParticipantById: () => ({
+          id: 'participant-1',
+          task_id: 'OC-RELAY-1',
+          binding_id: 'binding-1',
+          agent_ref: 'cc-connect:agora-codex',
+          runtime_provider: 'cc-connect',
+          task_role: 'developer',
+          source: 'template',
+          join_status: 'joined',
+          created_at: '2026-04-14T08:00:00.000Z',
+          joined_at: null,
+          left_at: null,
+        }),
+        getRuntimeSessionByParticipant: () => ({
+          id: 'runtime-1',
+          participant_binding_id: 'participant-1',
+          runtime_provider: 'cc-connect',
+          runtime_session_ref: 'agora-discord:thread-1:participant-1',
+          runtime_actor_ref: 'cc-connect:agora-codex',
+          continuity_ref: null,
+          presence_state: 'active',
+          binding_reason: null,
+          desired_runtime_presence: 'attached',
+          reconcile_stage_id: null,
+          reconciled_at: null,
+          last_seen_at: '2026-04-14T08:00:00.000Z',
+          created_at: '2026-04-14T08:00:00.000Z',
+          updated_at: '2026-04-14T08:00:00.000Z',
+          closed_at: null,
+        }),
+      },
+      now: () => new Date('2026-04-14T08:00:10.000Z'),
+    });
+
+    await expect(service.handleEvent({
+      type: 'reply',
+      session_key: 'agora-discord:thread-1:participant-1',
+      reply_ctx: 'ctx-1',
+      content: 'This reply cannot be published.',
+      format: 'text',
+    })).resolves.toBeUndefined();
+
+    expect(ingest).not.toHaveBeenCalled();
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'cc-connect',
+      agent_id: 'cc-connect:agora-codex',
+      session_key: 'agora-discord:thread-1:participant-1',
+      last_event: 'cc_connect_reply_relay_publish_failed',
+      last_event_at: '2026-04-14T08:00:10.000Z',
+      metadata: expect.objectContaining({
+        project: 'agora-codex',
+        relay_health: {
+          reply_observed_at: '2026-04-14T08:00:10.000Z',
+          discord_publish_status: 'failed',
+          discord_publish_at: '2026-04-14T08:00:10.000Z',
+          reply_ctx: 'ctx-1',
+          error: 'Discord publish failed: 403 missing access',
+        },
+      }),
+    }));
   });
 });
 

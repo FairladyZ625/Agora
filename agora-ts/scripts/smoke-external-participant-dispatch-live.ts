@@ -41,6 +41,8 @@ async function main() {
     .option('--task-id <id>', 'task id override')
     .option('--timeout-ms <ms>', 'overall wait timeout', '60000')
     .option('--poll-ms <ms>', 'poll interval', '1500')
+    .option('--expect-reply', 'send a nonce prompt and wait for bridge reply relay health', false)
+    .option('--reply-timeout-ms <ms>', 'reply relay wait timeout', '120000')
     .option('--keep-thread', 'do not archive the Discord thread after smoke', false)
     .parse(process.argv);
 
@@ -52,6 +54,8 @@ async function main() {
     taskId?: string;
     timeoutMs: string;
     pollMs: string;
+    expectReply: boolean;
+    replyTimeoutMs: string;
     keepThread: boolean;
   }>();
 
@@ -62,6 +66,7 @@ async function main() {
   const goal = `live external participant dispatch smoke ${taskId}`;
   const timeoutMs = Number(options.timeoutMs);
   const pollMs = Number(options.pollMs);
+  const replyTimeoutMs = Number(options.replyTimeoutMs);
   const runtime = createServerRuntime({ configPath: options.config });
   const maybeReady = runtime.ccConnectBridgeRuntimeService as unknown as { whenReady?: () => Promise<void> } | undefined;
   let threadRef: string | null = null;
@@ -160,6 +165,32 @@ async function main() {
       return matched ? detail : null;
     }, timeoutMs, pollMs);
 
+    let relayHealth: Record<string, unknown> | null = null;
+    let replyConversationEntryId: string | null = null;
+    if (options.expectReply) {
+      const nonce = `H9D_RELAY_${Date.now()}`;
+      await management.sendMessage({
+        configPath: target.configPath,
+        managementBaseUrl: target.management.baseUrl!,
+        managementToken: target.management.token!,
+        project: target.projectName,
+        sessionKey: runtimeSession.runtime_session_ref,
+        message: `Reply with exactly this token and no extra prose: ${nonce}`,
+      });
+      const relayed = await waitFor('cc-connect reply relay conversation entry', () => {
+        const entries = runtime.taskConversationService.listByTask(actualTaskId);
+        return entries.find((entry) => (
+          entry.direction === 'outbound'
+          && entry.author_kind === 'agent'
+          && entry.author_ref === options.agentRef
+          && entry.body.includes(nonce)
+        )) ?? null;
+      }, replyTimeoutMs, pollMs);
+      replyConversationEntryId = relayed.id;
+      relayHealth = readRelayHealth(runtime.liveSessionStore.get(runtimeSession.runtime_session_ref)?.metadata);
+      assert(relayHealth?.discord_publish_status === 'succeeded', `expected relay health publish success, got ${JSON.stringify(relayHealth)}`);
+    }
+
     console.log(JSON.stringify({
       ok: true,
       requested_task_id: taskId,
@@ -169,6 +200,10 @@ async function main() {
       runtime_session_ref: runtimeSession.runtime_session_ref,
       cc_connect_session_id: sessionDetail.id,
       cc_connect_history_count: sessionDetail.history_count,
+      ...(options.expectReply ? {
+        reply_conversation_entry_id: replyConversationEntryId,
+        relay_health: relayHealth,
+      } : {}),
       cleanup: options.keepThread ? 'kept' : 'archived',
     }, null, 2));
   } finally {
@@ -184,6 +219,16 @@ async function main() {
     runtime.dispose();
     runtime.db.close();
   }
+}
+
+function readRelayHealth(metadata: unknown): Record<string, unknown> | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return null;
+  }
+  const relayHealth = (metadata as Record<string, unknown>).relay_health;
+  return relayHealth && typeof relayHealth === 'object' && !Array.isArray(relayHealth)
+    ? relayHealth as Record<string, unknown>
+    : null;
 }
 
 await main().catch((error) => {

@@ -65,6 +65,13 @@ export const agentStatusItemSchema = z.object({
   primary_model: z.string().nullable().optional(),
   workspace_dir: z.string().nullable().optional(),
   discord_bot_user_ids: z.array(z.string()).optional(),
+  relay_health: z.object({
+    reply_observed_at: z.string().optional(),
+    discord_publish_status: z.enum(['succeeded', 'failed']).optional(),
+    discord_publish_at: z.string().optional(),
+    reply_ctx: z.string().optional(),
+    error: z.string().optional(),
+  }).optional(),
 });
 
 export const craftsmanStatusItemSchema = z.object({
