@@ -303,7 +303,7 @@ export class DashboardQueryService {
       item.load = Math.max(item.active_task_ids.length, item.active_subtask_ids.length);
     }
 
-    for (const session of this.liveSessions?.listActive() ?? []) {
+    for (const session of sortProjectedLiveSessions(this.liveSessions?.listActive() ?? [])) {
       const sessionSource = session.source;
       const current = agents.get(session.agent_id) ?? {
         id: session.agent_id,
@@ -942,6 +942,40 @@ function mergeUniqueMany(target: string[], values: string[]) {
   for (const value of values) {
     mergeUnique(target, value);
   }
+}
+
+function sortProjectedLiveSessions<T extends {
+  agent_id: string;
+  last_event_at: string;
+  metadata?: Record<string, unknown> | null;
+}>(sessions: T[]) {
+  return [...sessions].sort((a, b) => {
+    const agentOrder = a.agent_id.localeCompare(b.agent_id);
+    if (agentOrder !== 0) {
+      return agentOrder;
+    }
+    const scopeOrder = projectedSessionScopeRank(a.metadata) - projectedSessionScopeRank(b.metadata);
+    if (scopeOrder !== 0) {
+      return scopeOrder;
+    }
+    return timestampOrZero(a.last_event_at) - timestampOrZero(b.last_event_at);
+  });
+}
+
+function projectedSessionScopeRank(metadata: Record<string, unknown> | null | undefined) {
+  const scope = asRecord(metadata)?.session_scope;
+  if (scope === 'legacy_channel') {
+    return 0;
+  }
+  if (scope === 'thread_binding') {
+    return 2;
+  }
+  return 1;
+}
+
+function timestampOrZero(value: string | null | undefined) {
+  const time = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isFinite(time) ? time : 0;
 }
 
 function buildChannelSummaries(

@@ -60,6 +60,12 @@ describe('CcConnectSessionMirrorService', () => {
       conversation_id: '1475328660373372940',
       thread_id: '1475328660373372940',
       status: 'active',
+      metadata: expect.objectContaining({
+        session_scope: 'legacy_channel',
+        runtime_target_ref: 'cc-connect:agora-codex',
+        runtime_flavor: 'codex',
+        work_dir: '/repo/agora',
+      }),
     }));
     expect(synced).toEqual([
       expect.objectContaining({
@@ -229,6 +235,12 @@ describe('CcConnectSessionMirrorService', () => {
       agent_id: 'cc-connect:agora-codex-immediate',
       session_key: 'cc-connect:agora-codex-immediate:discord:1491748680485572679',
       status: 'active',
+      metadata: expect.objectContaining({
+        session_scope: 'legacy_channel',
+        runtime_target_ref: 'cc-connect:agora-codex-immediate',
+        runtime_flavor: 'codex',
+        work_dir: '/repo/agora',
+      }),
     }));
   });
 });

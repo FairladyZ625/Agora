@@ -183,6 +183,10 @@ function toLiveSession(
     last_event_at: session.updated_at ?? session.created_at ?? nowIso,
     metadata: {
       project: target.projectName,
+      session_scope: 'legacy_channel',
+      runtime_target_ref: buildCcConnectAgentId(target.projectName),
+      ...(target.runtimeFlavor ? { runtime_flavor: target.runtimeFlavor } : {}),
+      ...(target.workDir ? { work_dir: target.workDir } : {}),
       raw_session_key: session.session_key,
       session_id: session.id,
       ...(session.chat_name ? { chat_name: session.chat_name } : {}),

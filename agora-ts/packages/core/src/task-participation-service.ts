@@ -162,13 +162,15 @@ export class TaskParticipationService {
   }
 
   syncLiveSession(session: LiveSessionDto): { matched_participant_ids: string[]; matched_task_ids: string[] } {
-    const matchedBindings = this.findMatchingTaskBindings(session);
+    const matchedParticipants = this.findMatchingParticipants(session);
     const matchedParticipantIds: string[] = [];
     const matchedTaskIds = new Set<string>();
 
-    for (const binding of matchedBindings) {
-      const participant = this.participants.getByTaskAndAgent(binding.task_id, session.agent_id);
-      if (!participant) {
+    for (const participant of matchedParticipants) {
+      const binding = participant.binding_id
+        ? this.taskBindings.getById(participant.binding_id)
+        : this.findMatchingTaskBindings(session).find((candidate) => candidate.task_id === participant.task_id) ?? null;
+      if (!binding || this.shouldPreserveExistingRuntimeTruth(participant.id, session)) {
         continue;
       }
       matchedTaskIds.add(binding.task_id);
@@ -241,4 +243,54 @@ export class TaskParticipationService {
     }
     return Array.from(candidates.values()).filter((value): value is NonNullable<typeof value> => value !== null);
   }
+
+  private findMatchingParticipants(session: LiveSessionDto) {
+    const explicitParticipantBindingId = readExplicitParticipantBindingId(session);
+    if (explicitParticipantBindingId) {
+      const participant = this.participants.getById(explicitParticipantBindingId);
+      if (!participant || participant.agent_ref !== session.agent_id) {
+        return [];
+      }
+      return [participant];
+    }
+
+    const participants = new Map<string, ParticipantBindingRecord>();
+    for (const binding of this.findMatchingTaskBindings(session)) {
+      const participant = this.participants.getByTaskAndAgent(binding.task_id, session.agent_id);
+      if (!participant) {
+        continue;
+      }
+      participants.set(participant.id, participant);
+    }
+    return Array.from(participants.values());
+  }
+
+  private shouldPreserveExistingRuntimeTruth(participantId: string, session: LiveSessionDto) {
+    const existing = this.runtimeSessions.getByParticipantBinding(participantId);
+    if (!existing || existing.runtime_provider !== session.source || existing.runtime_session_ref === session.session_key) {
+      return false;
+    }
+    return readSessionScope(session) === 'legacy_channel'
+      && (existing.binding_reason === 'thread_bridge_dispatch' || existing.runtime_session_ref.startsWith('agora-'));
+  }
+}
+
+function readExplicitParticipantBindingId(session: LiveSessionDto) {
+  const metadata = asRecord(session.metadata);
+  return typeof metadata?.participant_binding_id === 'string'
+    ? metadata.participant_binding_id
+    : null;
+}
+
+function readSessionScope(session: LiveSessionDto) {
+  const metadata = asRecord(session.metadata);
+  return metadata?.session_scope === 'thread_binding' || metadata?.session_scope === 'legacy_channel'
+    ? metadata.session_scope
+    : null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }

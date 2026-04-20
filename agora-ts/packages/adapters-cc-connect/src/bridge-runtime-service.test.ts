@@ -127,6 +127,8 @@ describe('CcConnectBridgeRuntimeService', () => {
       last_event_at: '2026-04-14T12:00:00.000Z',
       metadata: {
         project: 'agora-codex-immediate',
+        session_scope: 'thread_binding',
+        participant_binding_id: 'participant-1',
         runtime_flavor: 'codex',
         runtime_target_ref: 'cc-connect:agora-codex-immediate',
         work_dir: '/Users/lizeyu/Projects/Agora',
@@ -239,6 +241,8 @@ describe('CcConnectBridgeRuntimeService', () => {
       session_key: 'agora-discord:thread-shared:participant-codex',
       metadata: {
         project: 'project-a-codex',
+        session_scope: 'thread_binding',
+        participant_binding_id: 'participant-codex',
         runtime_flavor: 'codex',
         runtime_target_ref: 'cc-connect:project-a-codex',
         work_dir: '/Projects/A',
@@ -249,6 +253,8 @@ describe('CcConnectBridgeRuntimeService', () => {
       session_key: 'agora-discord:thread-shared:participant-claude',
       metadata: {
         project: 'project-a-claude',
+        session_scope: 'thread_binding',
+        participant_binding_id: 'participant-claude',
         runtime_flavor: 'claude-code',
         runtime_target_ref: 'cc-connect:project-a-claude',
         work_dir: '/Projects/A',
