@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { TaskContextBindingRepository, TaskConversationRepository, TaskRepository, createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { StubIMProvisioningPort } from './im-ports.js';
 import { RuntimeThreadMessageRouter } from './runtime-message-ports.js';
+import type { RuntimeThreadMessageInput } from './runtime-message-ports.js';
 import { TaskBroadcastService } from './task-broadcast-service.js';
 
 function makeDb() {
@@ -33,7 +34,7 @@ describe('TaskBroadcastService', () => {
         conversation_ref: 'discord-parent',
         thread_ref: 'discord-thread',
       });
-      const routed: Array<Record<string, unknown>> = [];
+      const routed: RuntimeThreadMessageInput[] = [];
       const runtimeThreadMessageRouter = new RuntimeThreadMessageRouter([{
         runtime_provider: 'cc-connect',
         sendInboundMessage: async (input) => {
@@ -427,7 +428,7 @@ describe('TaskBroadcastService', () => {
       const { db } = fixture;
       const taskContextBindingRepository = new TaskContextBindingRepository(db);
       const taskConversationRepository = new TaskConversationRepository(db);
-      const routed: Array<Record<string, unknown>> = [];
+      const routed: RuntimeThreadMessageInput[] = [];
       const runtimeThreadMessageRouter = new RuntimeThreadMessageRouter([{
         runtime_provider: 'cc-connect',
         sendInboundMessage: async (input) => {

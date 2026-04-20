@@ -89,7 +89,7 @@ token = "MTQ5MTc0Nzg3Nzc5MjM4NzIwMw.fake.fake"
       token: item.management.token,
       bridgeBaseUrl: item.bridge.baseUrl,
       bridgeToken: item.bridge.token,
-      discordBotUserIds: item.discord.bot_user_ids,
+      discordBotUserIds: item.discord?.bot_user_ids ?? [],
     }))).toEqual([
       {
         projectName: 'agora-codex',
@@ -141,6 +141,7 @@ work_dir = "/repo/agora"
         configPath: '/tmp/config.toml',
         projectName: 'agora-codex-immediate',
         agentType: 'codex',
+        runtimeFlavor: 'codex',
         workDir: '/repo/agora',
         primaryModel: 'gpt-5.4',
         channelProviders: ['discord'],

@@ -19,6 +19,7 @@ describe('CcConnectThreadSessionService', () => {
         configPath: '/tmp/cc-connect.toml',
         projectName: 'agora-codex',
         agentType: 'codex',
+        runtimeFlavor: 'codex',
         workDir: '/repo/agora',
         primaryModel: 'gpt-5.4',
         channelProviders: ['discord'],
@@ -26,6 +27,12 @@ describe('CcConnectThreadSessionService', () => {
           enabled: true,
           baseUrl: 'http://127.0.0.1:9820',
           token: 'secret',
+        },
+        bridge: {
+          enabled: false,
+          baseUrl: null,
+          token: null,
+          path: '/bridge/ws',
         },
       }],
       managementService: {
@@ -76,6 +83,7 @@ describe('CcConnectThreadSessionService', () => {
         configPath: '/tmp/cc-connect.toml',
         projectName: 'agora-codex',
         agentType: 'codex',
+        runtimeFlavor: 'codex',
         workDir: '/repo/agora',
         primaryModel: 'gpt-5.4',
         channelProviders: ['discord'],
@@ -83,6 +91,12 @@ describe('CcConnectThreadSessionService', () => {
           enabled: true,
           baseUrl: 'http://127.0.0.1:9820',
           token: 'secret',
+        },
+        bridge: {
+          enabled: false,
+          baseUrl: null,
+          token: null,
+          path: '/bridge/ws',
         },
       }],
       managementService: {

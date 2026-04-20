@@ -12,9 +12,12 @@ import type { ApiProjectWorkbenchDto } from '@/types/api';
 
 const fetchProjects = vi.fn(async () => 'live');
 const PROJECTS_PAGE_SELECTION_KEY = 'agora-projects-selected-project';
-let projectStoreState: Record<string, unknown> & {
+const projectStoreState: Record<string, unknown> & {
   selectedProjectId: string | null;
   selectedProject: Record<string, unknown> | null;
+} = {
+  selectedProjectId: null,
+  selectedProject: null,
 };
 
 function buildProjectWorkbench(project: {
@@ -1130,7 +1133,7 @@ const updateTodo = vi.fn(async () => undefined);
 const deleteTodo = vi.fn(async () => undefined);
 const promoteTodo = vi.fn(async () => ({ task: { id: 'OC-401' } }));
 
-projectStoreState = {
+Object.assign(projectStoreState, {
   projects: [
     PROJECT_ALPHA,
     PROJECT_BETA,
@@ -1170,7 +1173,7 @@ projectStoreState = {
   createProject,
   selectProject: fetchProjectDetail,
   clearError: vi.fn(),
-};
+});
 
 vi.mock('@/stores/projectStore', () => ({
   useProjectStore: (selector?: (state: typeof projectStoreState) => unknown) =>

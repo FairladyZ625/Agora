@@ -44,6 +44,9 @@ describe('RuntimeRepoShimMaterializer', () => {
     });
 
     expect(result.target).toBe('codex_repo_shim');
+    if (result.target !== 'codex_repo_shim') {
+      throw new Error(`Unexpected materialization target: ${result.target}`);
+    }
     expect(result.artifact.filename).toBe('AGENTS.md');
     expect(result.artifact.runtime).toBe('codex');
     expect(result.artifact.content).toContain('# AGENTS.md');
@@ -71,6 +74,9 @@ describe('RuntimeRepoShimMaterializer', () => {
     });
 
     expect(result.target).toBe('claude_repo_shim');
+    if (result.target !== 'claude_repo_shim') {
+      throw new Error(`Unexpected materialization target: ${result.target}`);
+    }
     expect(result.artifact.filename).toBe('CLAUDE.md');
     expect(result.artifact.runtime).toBe('claude_code');
     expect(result.artifact.content).toContain('# CLAUDE.md');

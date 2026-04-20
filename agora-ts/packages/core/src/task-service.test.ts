@@ -27,6 +27,7 @@ import { ProjectBrainService } from './project-brain-service.js';
 import { ProjectContextWriter } from './project-context-writer.js';
 import type { RuntimeRecoveryPort } from './runtime-recovery-port.js';
 import { RuntimeThreadMessageRouter } from './runtime-message-ports.js';
+import type { RuntimeThreadMessageInput } from './runtime-message-ports.js';
 import { StubIMProvisioningPort } from './im-ports.js';
 
 const tempPaths: string[] = [];
@@ -34,7 +35,7 @@ const templatesDir = resolve(process.cwd(), 'templates');
 type TaskServiceBuilderOptions = NonNullable<Parameters<typeof createTaskServiceFromDb>[1]>;
 
 class FailingBootstrapPublishPort extends StubIMProvisioningPort {
-  async publishMessages(input: Parameters<StubIMProvisioningPort['publishMessages']>[0]): Promise<void> {
+  override async publishMessages(input: Parameters<StubIMProvisioningPort['publishMessages']>[0]): Promise<void> {
     this.published.push(input);
     throw new Error('discord publish unavailable');
   }
@@ -708,7 +709,8 @@ describe('task service', () => {
       agent_origin: 'user_managed',
       briefing_mode: 'overlay_full',
     });
-    expect(service.getTaskStatus(task.id).task.team.members[0]?.agentId).toBe('cc-connect:project-a-codex');
+    const status = service.getTaskStatus(task.id);
+    expect(status?.task.team?.members[0]?.agentId).toBe('cc-connect:project-a-codex');
   });
 
   it('does not override explicit project task agent refs with project default runtime targets', () => {
@@ -4110,7 +4112,7 @@ describe('task service', () => {
       thread_ref: 'discord-thread-bootstrap-1',
     });
     const bindingService = createTaskContextBindingServiceFromDb(db);
-    const routed: Array<Record<string, unknown>> = [];
+    const routed: RuntimeThreadMessageInput[] = [];
     const runtimeThreadMessageRouter = new RuntimeThreadMessageRouter([{
       runtime_provider: 'cc-connect',
       sendInboundMessage: async (input) => {
@@ -4146,7 +4148,7 @@ describe('task service', () => {
       taskContextBindingService: bindingService,
       taskParticipationService: taskParticipation,
       agentRuntimePort: runtimePort,
-      runtimeThreadMessageRouter,
+      runtimeThreadMessageRouter: runtimeThreadMessageRouter as unknown as NonNullable<TaskServiceBuilderOptions['runtimeThreadMessageRouter']>,
       taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-bootstrap-1',
       }),
@@ -4317,7 +4319,7 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-bootstrap-publish-failure',
     });
-    const routed: Array<Record<string, unknown>> = [];
+    const routed: RuntimeThreadMessageInput[] = [];
     const runtimeThreadMessageRouter = new RuntimeThreadMessageRouter([{
       runtime_provider: 'cc-connect',
       sendInboundMessage: async (input) => {
@@ -4346,7 +4348,7 @@ describe('task service', () => {
           agentRuntimePort: runtimePort,
         }),
         agentRuntimePort: runtimePort,
-        runtimeThreadMessageRouter,
+        runtimeThreadMessageRouter: runtimeThreadMessageRouter as unknown as NonNullable<TaskServiceBuilderOptions['runtimeThreadMessageRouter']>,
       });
 
       service.createTask({

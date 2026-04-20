@@ -11,8 +11,11 @@ import {
 import { buildProjectTaskHref } from '@/lib/projectTaskRoutes';
 import { useProjectStore } from '@/stores/projectStore';
 import type { ProjectContextDelivery } from '@/types/projectContext';
+import type { ProjectTaskSummary } from '@/types/project';
 
 type BrainFilter = 'all' | 'core' | 'knowledge' | 'recaps' | 'citizens';
+const EMPTY_PROJECT_TASKS: ProjectTaskSummary[] = [];
+
 type BrainItem =
   | {
     key: string;
@@ -81,13 +84,13 @@ export function ProjectBrainPage() {
     key: null,
   });
   const [audience, setAudience] = useState<'controller' | 'citizen' | 'craftsman'>('controller');
-  const [contextTaskId, setContextTaskId] = useState('');
+  const [contextTaskId, setContextTaskId] = useState<string | null>(null);
   const [deliveryState, setDeliveryState] = useState<{
-    loading: boolean;
+    requestKey: string | null;
     error: string | null;
     delivery: ProjectContextDelivery | null;
   }>({
-    loading: false,
+    requestKey: null,
     error: null,
     delivery: null,
   });
@@ -97,38 +100,32 @@ export function ProjectBrainPage() {
     void selectProject(projectId ?? null);
   }, [projectId, selectProject]);
 
-  const workTasks = selectedProject?.work.tasks ?? [];
+  const workTasks = selectedProject?.work.tasks ?? EMPTY_PROJECT_TASKS;
+  const selectedContextTaskId = contextTaskId === null
+    ? pickDefaultTaskId(workTasks)
+    : contextTaskId && !workTasks.some((task) => task.id === contextTaskId)
+      ? pickDefaultTaskId(workTasks)
+      : contextTaskId;
+  const deliveryRequestKey = selectedProject && projectId
+    ? `${projectId}:${audience}:${selectedContextTaskId}:${deliveryRefreshNonce}`
+    : null;
+  const deliveryLoading = Boolean(deliveryRequestKey && deliveryState.requestKey !== deliveryRequestKey);
 
   useEffect(() => {
-    const nextTaskId = pickDefaultTaskId(workTasks);
-    setContextTaskId((current) => {
-      if (current && workTasks.some((task) => task.id === current)) {
-        return current;
-      }
-      return nextTaskId;
-    });
-  }, [workTasks]);
-
-  useEffect(() => {
-    if (!selectedProject || !projectId) {
+    if (!selectedProject || !projectId || !deliveryRequestKey) {
       return;
     }
     let active = true;
-    setDeliveryState((current) => ({
-      ...current,
-      loading: true,
-      error: null,
-    }));
     void api.getProjectContextDelivery(projectId, {
       audience,
-      ...(contextTaskId ? { task_id: contextTaskId } : {}),
+      ...(selectedContextTaskId ? { task_id: selectedContextTaskId } : {}),
     })
       .then((response) => {
         if (!active) {
           return;
         }
         setDeliveryState({
-          loading: false,
+          requestKey: deliveryRequestKey,
           error: null,
           delivery: mapProjectContextDeliveryDto(response),
         });
@@ -138,7 +135,7 @@ export function ProjectBrainPage() {
           return;
         }
         setDeliveryState({
-          loading: false,
+          requestKey: deliveryRequestKey,
           error: deliveryError instanceof Error ? deliveryError.message : String(deliveryError),
           delivery: null,
         });
@@ -146,7 +143,7 @@ export function ProjectBrainPage() {
     return () => {
       active = false;
     };
-  }, [audience, contextTaskId, deliveryRefreshNonce, projectId, selectedProject]);
+  }, [audience, deliveryRequestKey, projectId, selectedContextTaskId, selectedProject]);
 
   if (detailLoading) {
     return (
@@ -332,7 +329,7 @@ export function ProjectBrainPage() {
             <label className="space-y-2">
               <span className="field-label">{copy.taskLabel}</span>
               <select
-                value={contextTaskId}
+                value={selectedContextTaskId}
                 onChange={(event) => setContextTaskId(event.target.value)}
                 className="input"
               >
@@ -344,7 +341,7 @@ export function ProjectBrainPage() {
             </label>
           </div>
           <div className="surface-panel surface-panel--workspace">
-            {deliveryState.loading ? (
+            {deliveryLoading ? (
               <p className="type-body-sm">{copy.deliveryLoadingTitle}</p>
             ) : deliveryState.error ? (
               <div className="empty-state">
