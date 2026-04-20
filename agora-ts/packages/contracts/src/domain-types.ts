@@ -385,6 +385,21 @@ export interface ProjectAgentRosterEntryRecord {
   updated_at: string;
 }
 
+export interface RuntimeTargetOverlayRecord {
+  runtime_target_ref: string;
+  enabled: boolean;
+  display_name: string | null;
+  tags: string[];
+  allowed_projects: string[];
+  default_roles: string[];
+  presentation_mode: 'headless' | 'im_presented';
+  presentation_provider: string | null;
+  presentation_identity_ref: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ProjectWriteLockRecord {
   project_id: string;
   holder_task_id: string;
@@ -586,6 +601,19 @@ export interface UpsertProjectAgentRosterEntryInput {
   kind: ProjectAgentRosterKindDto;
   default_inclusion?: boolean;
   status?: ProjectAgentRosterStatusDto;
+}
+
+export interface UpsertRuntimeTargetOverlayInput {
+  runtime_target_ref: string;
+  enabled?: boolean;
+  display_name?: string | null;
+  tags?: string[];
+  allowed_projects?: string[];
+  default_roles?: string[];
+  presentation_mode?: 'headless' | 'im_presented';
+  presentation_provider?: string | null;
+  presentation_identity_ref?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface AcquireProjectWriteLockInput {

@@ -1101,6 +1101,89 @@ const { getWorkspaceBootstrapStatus } = vi.hoisted(() => ({
 const { getProjectWorkbench } = vi.hoisted(() => ({
   getProjectWorkbench: vi.fn(async (projectId: string) => PROJECT_WORKBENCH_DTOS[projectId as keyof typeof PROJECT_WORKBENCH_DTOS]),
 }));
+const { listRuntimeTargets } = vi.hoisted(() => ({
+  listRuntimeTargets: vi.fn(async () => ([
+    {
+      runtimeTargetRef: 'cc-connect:agora-codex',
+      inventoryKind: 'runtime_target' as const,
+      runtimeProvider: 'cc-connect',
+      runtimeFlavor: 'codex',
+      hostFramework: 'cc-connect',
+      primaryModel: 'gpt-5.4',
+      workspaceDir: '/repo/agora',
+      channelProviders: ['discord'],
+      inventorySources: ['cc-connect'],
+      discordBotUserIds: [],
+      enabled: true,
+      displayName: 'Agora Codex',
+      tags: ['coding'],
+      allowedProjects: [],
+      defaultRoles: ['developer'],
+      presentationMode: 'headless' as const,
+      presentationProvider: null,
+      presentationIdentityRef: null,
+      metadata: null,
+      discovered: true,
+    },
+    {
+      runtimeTargetRef: 'cc-connect:agora-claude',
+      inventoryKind: 'runtime_target' as const,
+      runtimeProvider: 'cc-connect',
+      runtimeFlavor: 'claude-code',
+      hostFramework: 'cc-connect',
+      primaryModel: 'claude-sonnet-4.5',
+      workspaceDir: '/repo/agora',
+      channelProviders: ['discord'],
+      inventorySources: ['cc-connect'],
+      discordBotUserIds: ['1234567890'],
+      enabled: true,
+      displayName: 'Agora Claude',
+      tags: ['review'],
+      allowedProjects: ['proj-alpha'],
+      defaultRoles: ['reviewer'],
+      presentationMode: 'im_presented' as const,
+      presentationProvider: 'discord',
+      presentationIdentityRef: '1234567890',
+      metadata: null,
+      discovered: true,
+    },
+  ])),
+}));
+const { getProjectRuntimePolicy } = vi.hoisted(() => ({
+  getProjectRuntimePolicy: vi.fn(async () => ({
+    projectId: 'proj-alpha',
+    runtimePolicy: {
+      runtimeTargets: {
+        flavors: {
+          codex: 'cc-connect:agora-codex',
+          'claude-code': 'cc-connect:agora-claude',
+        },
+        defaultCoding: 'cc-connect:agora-codex',
+        defaultReview: 'cc-connect:agora-claude',
+      },
+      roleRuntimePolicy: {
+        reviewer: {
+          preferredFlavor: 'claude-code',
+        },
+      },
+    },
+  })),
+}));
+const updateProjectRuntimePolicy = vi.hoisted(() => vi.fn(async (_projectId: string, input: {
+  runtimeTargets?: {
+    flavors?: Record<string, string>;
+    default?: string;
+    defaultCoding?: string;
+    defaultReview?: string;
+  } | null;
+  roleRuntimePolicy?: Record<string, { preferredFlavor?: string | null }>;
+}) => ({
+  projectId: 'proj-alpha',
+  runtimePolicy: {
+    runtimeTargets: input.runtimeTargets ?? null,
+    roleRuntimePolicy: input.roleRuntimePolicy ?? {},
+  },
+})));
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api');
@@ -1108,6 +1191,9 @@ vi.mock('@/lib/api', async () => {
     ...actual,
     getWorkspaceBootstrapStatus,
     getProjectWorkbench,
+    listRuntimeTargets,
+    getProjectRuntimePolicy,
+    updateProjectRuntimePolicy,
     installProjectNomos,
     runProjectNomosDoctor,
     reviewProjectNomos,
@@ -1419,8 +1505,48 @@ describe('project workbench pages', () => {
     expect(screen.getByRole('link', { name: 'Create Task In Project' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create Todo In Project' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open Project Context' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Runtime policy' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Review Draft' })).not.toBeInTheDocument();
     expect(screen.queryByText('/repo/proj-alpha')).not.toBeInTheDocument();
+  });
+
+  it('updates project runtime policy through the dashboard panel', async () => {
+    await renderProjectDetailPage();
+
+    fireEvent.change(screen.getByLabelText('Default Coding Target'), {
+      target: { value: 'cc-connect:agora-codex' },
+    });
+    fireEvent.change(screen.getByLabelText('Default Review Target'), {
+      target: { value: 'cc-connect:agora-claude' },
+    });
+    fireEvent.change(screen.getByLabelText('Flavor codex'), {
+      target: { value: 'cc-connect:agora-codex' },
+    });
+    fireEvent.change(screen.getByLabelText('Flavor claude-code'), {
+      target: { value: 'cc-connect:agora-claude' },
+    });
+    fireEvent.change(screen.getByLabelText('Role reviewer preferred flavor'), {
+      target: { value: 'claude-code' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Runtime Policy' }));
+
+    await waitFor(() => {
+      expect(updateProjectRuntimePolicy).toHaveBeenCalledWith('proj-alpha', {
+        runtimeTargets: {
+          flavors: {
+            codex: 'cc-connect:agora-codex',
+            'claude-code': 'cc-connect:agora-claude',
+          },
+          defaultCoding: 'cc-connect:agora-codex',
+          defaultReview: 'cc-connect:agora-claude',
+        },
+        roleRuntimePolicy: {
+          reviewer: {
+            preferredFlavor: 'claude-code',
+          },
+        },
+      });
+    });
   });
 
   it('runs project nomos management actions', async () => {

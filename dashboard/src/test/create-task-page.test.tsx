@@ -19,6 +19,30 @@ const apiMocks = vi.hoisted(() => ({
       resolved_path: '/tmp/skills/frontend-design/SKILL.md',
     },
   ])),
+  listRuntimeTargets: vi.fn(async () => ([
+    {
+      runtimeTargetRef: 'cc-connect:agora-claude',
+      inventoryKind: 'runtime_target' as const,
+      runtimeProvider: 'cc-connect',
+      runtimeFlavor: 'claude-code',
+      hostFramework: 'cc-connect',
+      primaryModel: 'claude-sonnet-4.5',
+      workspaceDir: '/Users/lizeyu/Projects/Agora',
+      channelProviders: ['discord'],
+      inventorySources: ['cc-connect'],
+      discordBotUserIds: ['1234567890'],
+      enabled: true,
+      displayName: 'Agora Claude Runtime',
+      tags: ['review'],
+      allowedProjects: ['proj-alpha'],
+      defaultRoles: ['developer', 'reviewer'],
+      presentationMode: 'im_presented' as const,
+      presentationProvider: 'discord',
+      presentationIdentityRef: '1234567890',
+      metadata: null,
+      discovered: true,
+    },
+  ])),
 }));
 const showMessage = vi.fn();
 const navigate = vi.fn();
@@ -59,6 +83,7 @@ vi.mock('react-router', async (importOriginal) => {
 
 vi.mock('@/lib/api', () => ({
   listSkills: apiMocks.listSkills,
+  listRuntimeTargets: apiMocks.listRuntimeTargets,
 }));
 
 vi.mock('@/stores/taskStore', () => ({
@@ -182,6 +207,11 @@ vi.mock('@/stores/agentStore', () => ({
   useAgentStore: (selector: (state: {
     agents: Array<{
       id: string;
+      inventoryKind?: 'agent' | 'runtime_target';
+      runtimeProvider?: string | null;
+      runtimeFlavor?: string | null;
+      runtimeTargetRef?: string | null;
+      discordBotUserIds?: string[];
       role: string | null;
       status: string;
       presence: 'online' | 'offline' | 'disconnected' | 'stale';
@@ -289,6 +319,33 @@ vi.mock('@/stores/agentStore', () => ({
         primaryModel: null,
         workspaceDir: null,
         accountId: 'review',
+        activeTaskIds: [],
+        activeSubtaskIds: [],
+        taskCount: 0,
+        subtaskCount: 0,
+        load: 0,
+        lastActiveAt: null,
+        lastSeenAt: null,
+      },
+      {
+        id: 'cc-connect:agora-claude',
+        inventoryKind: 'runtime_target' as const,
+        runtimeProvider: 'cc-connect',
+        runtimeFlavor: 'claude-code',
+        runtimeTargetRef: 'cc-connect:agora-claude',
+        discordBotUserIds: ['1234567890'],
+        role: null,
+        status: 'idle',
+        presence: 'offline',
+        selectability: 'selectable',
+        selectabilityReason: 'inventory_launchable',
+        presenceReason: 'inventory_only',
+        channelProviders: ['discord'],
+        hostFramework: 'cc-connect',
+        inventorySources: ['cc-connect'],
+        primaryModel: 'claude-sonnet-4.5',
+        workspaceDir: '/Users/lizeyu/Projects/Agora',
+        accountId: null,
         activeTaskIds: [],
         activeSubtaskIds: [],
         taskCount: 0,
@@ -519,6 +576,62 @@ describe('create task page', () => {
     const developerCard = screen.getByText('developer').closest('.detail-card');
     expect(developerCard).not.toBeNull();
     expect(within(developerCard as HTMLElement).getByRole('button', { name: 'sonnet' })).toBeInTheDocument();
+  });
+
+  it('groups runtime targets separately and allows explicit runtime target assignment', async () => {
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.listRuntimeTargets).toHaveBeenCalled();
+    });
+
+    fireEvent.change(screen.getByLabelText('任务标题'), {
+      target: { value: '显式选择 runtime target' },
+    });
+    fireEvent.change(screen.getByLabelText('任务描述'), {
+      target: { value: 'developer 直接绑定到 cc-connect target' },
+    });
+    fireEvent.change(screen.getByLabelText('所属 Project'), {
+      target: { value: 'proj-alpha' },
+    });
+    fireEvent.change(screen.getByLabelText('任务 Owner'), {
+      target: { value: '11' },
+    });
+    fireEvent.change(screen.getByLabelText('任务 Assignee'), {
+      target: { value: '12' },
+    });
+    fireEvent.change(screen.getByLabelText('任务 Approver'), {
+      target: { value: '11' },
+    });
+
+    const developerCard = screen.getByText('developer').closest('.detail-card');
+    expect(developerCard).not.toBeNull();
+    expect(within(developerCard as HTMLElement).getByText('原生 Agents')).toBeInTheDocument();
+    expect(within(developerCard as HTMLElement).getByText('Runtime Targets')).toBeInTheDocument();
+    fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: 'Agora Claude Runtime' }));
+    fireEvent.click(screen.getByRole('button', { name: '创建任务' }));
+
+    await waitFor(() => {
+      expect(createTask).toHaveBeenCalledWith(expect.objectContaining({
+        title: '显式选择 runtime target',
+        project_id: 'proj-alpha',
+        team_override: {
+          members: expect.arrayContaining([
+            { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+            { role: 'developer', agentId: 'cc-connect:agora-claude', member_kind: 'citizen', model_preference: 'fast_coding' },
+          ]),
+        },
+        im_target: {
+          provider: 'discord',
+          visibility: 'private',
+          participant_refs: ['opus', 'cc-connect:agora-claude'],
+        },
+      }));
+    });
   });
 
   it('shows restricted suggested agents with a human-readable reason instead of silently hiding them', async () => {

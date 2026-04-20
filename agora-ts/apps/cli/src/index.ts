@@ -51,6 +51,7 @@ import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
 import {
   AttentionRoutingService,
+  CompositeAgentInventorySource,
   ContextMaterializationService,
   deriveGraphFromStages,
   CcConnectInspectionService,
@@ -65,12 +66,13 @@ import {
   ProjectBrainIndexWorkerService,
   ReferenceBundleService,
   type RetrievalService,
+  RuntimeTargetService,
   isDeveloperRegressionEnabled,
 } from '@agora-ts/core';
 import { OpenAiCompatibleProjectBrainEmbeddingAdapter } from '@agora-ts/adapters-brain';
-import { buildCcConnectAgentId, loadCcConnectProjectTargets } from '@agora-ts/adapters-cc-connect';
+import { buildCcConnectAgentId, CcConnectAgentRegistry, loadCcConnectProjectTargets } from '@agora-ts/adapters-cc-connect';
 import { ProjectContextBriefingMaterializer, RuntimeRepoShimMaterializer, RuntimeRepoShimWritebackService } from '@agora-ts/adapters-materialization';
-import { ProjectBrainIndexJobRepository } from '@agora-ts/db';
+import { ProjectBrainIndexJobRepository, RuntimeTargetOverlayRepository, type AgoraDatabase } from '@agora-ts/db';
 import { LiveRegressionActor } from '@agora-ts/testing';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 import type {
@@ -90,6 +92,7 @@ import type {
   TemplateAuthoringService,
   IMProvisioningPort,
 } from '@agora-ts/core';
+import { OpenClawAgentRegistry } from '@agora-ts/adapters-openclaw';
 import type {
   CraftsmanCallbackRequestDto,
   CraftsmanInteractionExpectationDto,
@@ -196,6 +199,7 @@ export interface CliDependencies {
   templateAuthoringService?: TemplateAuthoringService;
   rolePackService?: RolePackService;
   dashboardQueryService?: DashboardQueryService;
+  runtimeTargetService?: RuntimeTargetServiceLike;
   ccConnectInspectionService?: CcConnectInspectionService;
   ccConnectManagementService?: CcConnectManagementService;
   ccConnectThreadSessionService?: CcConnectThreadSessionServiceLike;
@@ -211,6 +215,7 @@ export interface CliDependencies {
 }
 
 type LegacyRuntimeServiceLike = Pick<InteractiveRuntimePort, 'up' | 'status' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'start' | 'resume' | 'task' | 'tail' | 'doctor' | 'down' | 'recordIdentity'>;
+type RuntimeTargetServiceLike = Pick<RuntimeTargetService, 'listRuntimeTargets' | 'getRuntimeTarget' | 'getOverlay' | 'upsertOverlay' | 'clearOverlay'>;
 
 function writeLine(stream: Writable, message: string) {
   stream.write(`${message}\n`);
@@ -606,6 +611,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const templateAuthoringService = createLazyObject(() => deps.templateAuthoringService ?? resolveComposition().templateAuthoringService);
   const rolePackService = createLazyObject(() => deps.rolePackService ?? resolveComposition().rolePackService);
   const dashboardQueryService = createLazyObject(() => deps.dashboardQueryService ?? resolveComposition().dashboardQueryService);
+  const getRuntimeTargetService = () => deps.runtimeTargetService ?? createDefaultRuntimeTargetService(resolveComposition().db);
   const getCcConnectInspectionService = () => deps.ccConnectInspectionService ?? new CcConnectInspectionService();
   const getCcConnectManagementService = () => deps.ccConnectManagementService ?? new CcConnectManagementService();
   const getImProvisioningPort = () => deps.imProvisioningPort ?? resolveComposition().imProvisioningPort;
@@ -2157,6 +2163,72 @@ export function createCliProgram(deps: CliDependencies = {}) {
       const membership = projectService.removeProjectMembership(projectId, accountId);
       writeLine(stdout, `Project member 已移除: ${resolveAccountLabel(humanAccountService, membership.account_id)}`);
       writeLine(stdout, `${membership.account_id}\t${membership.role}\t${membership.status}`);
+    });
+
+  const projectRuntimePolicy = projects
+    .command('runtime-policy')
+    .description('project runtime target policy commands');
+
+  projectRuntimePolicy
+    .command('show')
+    .argument('<projectId>', 'project id')
+    .option('--json', '输出 JSON', false)
+    .action((projectId: string, options: { json?: boolean }) => {
+      const runtimePolicy = projectService.getProjectRuntimePolicy(projectId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          project_id: projectId,
+          runtime_policy: runtimePolicy,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, `project_id: ${projectId}`);
+      writeLine(stdout, `runtime_targets: ${JSON.stringify(runtimePolicy.runtime_targets)}`);
+      writeLine(stdout, `role_runtime_policy: ${JSON.stringify(runtimePolicy.role_runtime_policy)}`);
+    });
+
+  projectRuntimePolicy
+    .command('set')
+    .argument('<projectId>', 'project id')
+    .option('--default <targetRef>', 'default runtime target')
+    .option('--default-coding <targetRef>', 'default coding runtime target')
+    .option('--default-review <targetRef>', 'default review runtime target')
+    .option('--flavor <binding>', 'runtime flavor binding: flavor=targetRef', collectOption, [])
+    .option('--role-flavor <binding>', 'role flavor binding: role=flavor', collectOption, [])
+    .option('--clear-runtime-targets', 'remove runtime target defaults from project metadata', false)
+    .option('--json', '输出 JSON', false)
+    .action((projectId: string, options: {
+      default?: string;
+      defaultCoding?: string;
+      defaultReview?: string;
+      flavor?: string[];
+      roleFlavor?: string[];
+      clearRuntimeTargets?: boolean;
+      json?: boolean;
+    }) => {
+      const runtimeTargets = options.clearRuntimeTargets
+        ? null
+        : buildProjectRuntimeTargetsUpdate({
+          defaultTarget: options.default,
+          defaultCoding: options.defaultCoding,
+          defaultReview: options.defaultReview,
+          flavorBindings: options.flavor ?? [],
+        });
+      const roleRuntimePolicy = buildProjectRoleRuntimePolicyUpdate(options.roleFlavor ?? []);
+      const runtimePolicy = projectService.updateProjectRuntimePolicy(projectId, {
+        ...(runtimeTargets !== undefined ? { runtime_targets: runtimeTargets } : {}),
+        ...(roleRuntimePolicy !== undefined ? { role_runtime_policy: roleRuntimePolicy } : {}),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          project_id: projectId,
+          runtime_policy: runtimePolicy,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, `project runtime policy updated: ${projectId}`);
+      writeLine(stdout, `runtime_targets: ${JSON.stringify(runtimePolicy.runtime_targets)}`);
+      writeLine(stdout, `role_runtime_policy: ${JSON.stringify(runtimePolicy.role_runtime_policy)}`);
     });
 
   const projectImSpace = projects
@@ -4647,6 +4719,30 @@ export function createCliProgram(deps: CliDependencies = {}) {
     };
   }
 
+  function buildRuntimeTargetView(target: ReturnType<RuntimeTargetServiceLike['getRuntimeTarget']>) {
+    return {
+      runtime_target_ref: target.runtime_target_ref,
+      runtime_provider: target.runtime_provider,
+      runtime_flavor: target.runtime_flavor,
+      host_framework: target.host_framework,
+      primary_model: target.primary_model,
+      workspace_dir: target.workspace_dir,
+      presentation_mode: target.presentation_mode,
+      presentation_provider: target.presentation_provider,
+      presentation_identity_ref: target.presentation_identity_ref,
+      display_name: target.display_name,
+      enabled: target.enabled,
+      tags: target.tags,
+      allowed_projects: target.allowed_projects,
+      default_roles: target.default_roles,
+      channel_providers: target.channel_providers,
+      discord_bot_user_ids: target.discord_bot_user_ids,
+      inventory_sources: target.inventory_sources,
+      discovered: target.discovered,
+      metadata: target.metadata,
+    };
+  }
+
   ccConnect
     .command('targets')
     .description('list locally configured cc-connect runtime targets')
@@ -4685,6 +4781,120 @@ export function createCliProgram(deps: CliDependencies = {}) {
           `bridge=${item.bridge.enabled ? 'enabled' : 'disabled'}`,
         ].join('\t'));
       }
+    });
+
+  const runtimeTarget = program
+    .command('runtime-target')
+    .description('inspect and configure provider-neutral runtime targets');
+
+  runtimeTarget
+    .command('list')
+    .description('list discovered runtime targets')
+    .option('--json', '输出 JSON', false)
+    .action((options: { json?: boolean }) => {
+      const runtimeTargets = getRuntimeTargetService().listRuntimeTargets().map(buildRuntimeTargetView);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ runtime_targets: runtimeTargets }, null, 2));
+        return;
+      }
+      if (runtimeTargets.length === 0) {
+        writeLine(stdout, '没有检测到 runtime targets');
+        return;
+      }
+      for (const item of runtimeTargets) {
+        writeLine(stdout, [
+          item.runtime_target_ref,
+          item.runtime_flavor ?? '-',
+          item.workspace_dir ?? '-',
+          item.presentation_mode,
+          item.display_name ?? '-',
+          item.enabled ? 'enabled' : 'disabled',
+        ].join('\t'));
+      }
+    });
+
+  runtimeTarget
+    .command('inspect')
+    .description('show one runtime target')
+    .argument('<runtimeTargetRef>', 'runtime target ref')
+    .option('--json', '输出 JSON', false)
+    .action((runtimeTargetRef: string, options: { json?: boolean }) => {
+      const runtimeTargetView = buildRuntimeTargetView(getRuntimeTargetService().getRuntimeTarget(runtimeTargetRef));
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ runtime_target: runtimeTargetView }, null, 2));
+        return;
+      }
+      for (const [key, value] of Object.entries(runtimeTargetView)) {
+        writeLine(stdout, `${key}: ${typeof value === 'object' ? JSON.stringify(value) : String(value)}`);
+      }
+    });
+
+  const runtimeTargetOverlay = runtimeTarget
+    .command('overlay')
+    .description('manage runtime target overlay metadata');
+
+  runtimeTargetOverlay
+    .command('set')
+    .description('upsert runtime target overlay')
+    .argument('<runtimeTargetRef>', 'runtime target ref')
+    .option('--display-name <name>', 'display name override')
+    .option('--enable', 'enable target', false)
+    .option('--disable', 'disable target', false)
+    .option('--presentation-mode <mode>', 'headless | im_presented')
+    .option('--presentation-provider <provider>', 'presentation provider override')
+    .option('--presentation-identity <ref>', 'presentation identity ref override')
+    .option('--tag <tag>', 'append overlay tag', collectOption, [])
+    .option('--allow-project <projectId>', 'restrict to project id', collectOption, [])
+    .option('--default-role <role>', 'mark default role', collectOption, [])
+    .option('--metadata-json <json>', 'overlay metadata JSON')
+    .option('--json', '输出 JSON', false)
+    .action((runtimeTargetRef: string, options: {
+      displayName?: string;
+      enable?: boolean;
+      disable?: boolean;
+      presentationMode?: 'headless' | 'im_presented';
+      presentationProvider?: string;
+      presentationIdentity?: string;
+      tag?: string[];
+      allowProject?: string[];
+      defaultRole?: string[];
+      metadataJson?: string;
+      json?: boolean;
+    }) => {
+      const overlay = getRuntimeTargetService().upsertOverlay(runtimeTargetRef, {
+        ...(options.displayName !== undefined ? { display_name: options.displayName } : {}),
+        ...(options.enable || options.disable ? { enabled: options.enable && !options.disable } : {}),
+        ...(options.presentationMode !== undefined ? { presentation_mode: options.presentationMode } : {}),
+        ...(options.presentationProvider !== undefined ? { presentation_provider: options.presentationProvider } : {}),
+        ...(options.presentationIdentity !== undefined ? { presentation_identity_ref: options.presentationIdentity } : {}),
+        ...((options.tag?.length ?? 0) > 0 ? { tags: options.tag } : {}),
+        ...((options.allowProject?.length ?? 0) > 0 ? { allowed_projects: options.allowProject } : {}),
+        ...((options.defaultRole?.length ?? 0) > 0 ? { default_roles: options.defaultRole } : {}),
+        ...(options.metadataJson !== undefined ? { metadata: parseJsonString(options.metadataJson, '--metadata-json') } : {}),
+      });
+      const runtimeTargetView = buildRuntimeTargetView(getRuntimeTargetService().getRuntimeTarget(runtimeTargetRef));
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ overlay, runtime_target: runtimeTargetView }, null, 2));
+        return;
+      }
+      writeLine(stdout, `overlay updated: ${runtimeTargetRef}`);
+      writeLine(stdout, `presentation_mode: ${runtimeTargetView.presentation_mode}`);
+      writeLine(stdout, `display_name: ${runtimeTargetView.display_name ?? '-'}`);
+    });
+
+  runtimeTargetOverlay
+    .command('clear')
+    .description('clear runtime target overlay')
+    .argument('<runtimeTargetRef>', 'runtime target ref')
+    .option('--json', '输出 JSON', false)
+    .action((runtimeTargetRef: string, options: { json?: boolean }) => {
+      const cleared = getRuntimeTargetService().clearOverlay(runtimeTargetRef);
+      const runtimeTargetView = buildRuntimeTargetView(getRuntimeTargetService().getRuntimeTarget(runtimeTargetRef));
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ cleared, runtime_target: runtimeTargetView }, null, 2));
+        return;
+      }
+      writeLine(stdout, cleared ? `overlay cleared: ${runtimeTargetRef}` : `overlay not found: ${runtimeTargetRef}`);
     });
 
   ccConnect
@@ -4960,6 +5170,59 @@ export function createCliProgram(deps: CliDependencies = {}) {
     });
 
   return program;
+}
+
+function createDefaultRuntimeTargetService(db: AgoraDatabase) {
+  return new RuntimeTargetService({
+    agentInventory: new CompositeAgentInventorySource([
+      new OpenClawAgentRegistry(
+        process.env.AGORA_OPENCLAW_CONFIG_PATH
+          ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
+          : {},
+      ),
+      new CcConnectAgentRegistry(),
+    ]),
+    overlayRepository: new RuntimeTargetOverlayRepository(db),
+  });
+}
+
+function buildProjectRuntimeTargetsUpdate(options: {
+  defaultTarget?: string;
+  defaultCoding?: string;
+  defaultReview?: string;
+  flavorBindings: string[];
+}) {
+  const payload: Record<string, unknown> = {};
+  const flavors = Object.fromEntries(options.flavorBindings.map(parseBindingOption));
+  if (Object.keys(flavors).length > 0) {
+    payload.flavors = flavors;
+  }
+  if (options.defaultTarget) {
+    payload.default = options.defaultTarget;
+  }
+  if (options.defaultCoding) {
+    payload.default_coding = options.defaultCoding;
+  }
+  if (options.defaultReview) {
+    payload.default_review = options.defaultReview;
+  }
+  return Object.keys(payload).length > 0 ? payload : undefined;
+}
+
+function buildProjectRoleRuntimePolicyUpdate(bindings: string[]) {
+  const payload = Object.fromEntries(bindings.map((raw) => {
+    const [role, flavor] = parseBindingOption(raw);
+    return [role, { preferred_flavor: flavor }];
+  }));
+  return Object.keys(payload).length > 0 ? payload : undefined;
+}
+
+function parseBindingOption(raw: string): [string, string] {
+  const [left, right] = raw.split('=');
+  if (!left || !right) {
+    throw new Error(`invalid binding: ${raw}. Expected key=value.`);
+  }
+  return [left, right];
 }
 
 export async function runCli(argv: string[]) {

@@ -37,6 +37,7 @@ import type {
   ProjectBrainIndexJobStatus,
   ProjectMembershipRecord,
   ProjectRecord,
+  RuntimeTargetOverlayRecord,
   ProjectWriteLockRecord,
   ReconcileRuntimeSessionBindingInput,
   RoleDefinitionRecord,
@@ -59,6 +60,7 @@ import type {
   UpdateTodoInput,
   UpsertProjectAgentRosterEntryInput,
   UpsertProjectMembershipInput,
+  UpsertRuntimeTargetOverlayInput,
   UpsertRuntimeSessionBindingInput,
   UpsertTaskAuthorityInput,
 } from './domain-types.js';
@@ -505,7 +507,20 @@ export interface IProjectAgentRosterRepository {
   ): ProjectAgentRosterEntryRecord | null;
 }
 
-// ─── 19. ProjectWriteLock ─────────────────────────────────────────────────
+// ─── 19. RuntimeTargetOverlay ─────────────────────────────────────────────
+
+export interface IRuntimeTargetOverlayRepository {
+  upsertOverlay(
+    input: UpsertRuntimeTargetOverlayInput,
+  ): RuntimeTargetOverlayRecord;
+  getOverlay(
+    runtimeTargetRef: string,
+  ): RuntimeTargetOverlayRecord | null;
+  listOverlays(): RuntimeTargetOverlayRecord[];
+  deleteOverlay(runtimeTargetRef: string): boolean;
+}
+
+// ─── 20. ProjectWriteLock ─────────────────────────────────────────────────
 
 export interface IProjectWriteLockRepository {
   acquireLock(
@@ -515,7 +530,7 @@ export interface IProjectWriteLockRepository {
   getLock(projectId: string): ProjectWriteLockRecord | null;
 }
 
-// ─── 20. ProjectBrainIndexJob ─────────────────────────────────────────────
+// ─── 21. ProjectBrainIndexJob ─────────────────────────────────────────────
 
 export interface IProjectBrainIndexJobRepository {
   enqueue(input: {
@@ -533,7 +548,7 @@ export interface IProjectBrainIndexJobRepository {
   markFailed(jobId: number, error: string): ProjectBrainIndexJobRecord;
 }
 
-// ─── 21. Template ─────────────────────────────────────────────────────────
+// ─── 22. Template ─────────────────────────────────────────────────────────
 
 export interface ITemplateRepository {
   seedFromDir(templatesDir: string): { inserted: number };
@@ -549,7 +564,7 @@ export interface ITemplateRepository {
   ): TemplateRecord;
 }
 
-// ─── 22. Citizen ──────────────────────────────────────────────────────────
+// ─── 23. Citizen ──────────────────────────────────────────────────────────
 
 export interface ICitizenRepository {
   insertCitizen(input: InsertCitizenInput): CitizenRecord;
@@ -557,7 +572,7 @@ export interface ICitizenRepository {
   listCitizens(projectId?: string, status?: string): CitizenRecord[];
 }
 
-// ─── 23. RoleDefinition ───────────────────────────────────────────────────
+// ─── 24. RoleDefinition ───────────────────────────────────────────────────
 
 export interface RoleDefinitionSeedResult {
   inserted: number;

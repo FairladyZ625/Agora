@@ -81,6 +81,7 @@ export interface AgentHostSummary {
 
 export interface AgentStatusItem {
   id: string;
+  inventoryKind?: 'agent' | 'runtime_target';
   role: string | null;
   status: string;
   presence: 'online' | 'offline' | 'disconnected' | 'stale';
@@ -89,10 +90,14 @@ export interface AgentStatusItem {
   presenceReason: string | null;
   channelProviders: string[];
   hostFramework: string | null;
+  runtimeProvider?: string | null;
+  runtimeFlavor?: string | null;
+  runtimeTargetRef?: string | null;
   inventorySources: string[];
   primaryModel: string | null;
   workspaceDir: string | null;
   accountId: string | null;
+  discordBotUserIds?: string[];
   activeTaskIds: string[];
   activeSubtaskIds: string[];
   taskCount: number;

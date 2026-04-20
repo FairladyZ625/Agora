@@ -31,6 +31,11 @@ import type {
 } from '@/types/api';
 import type { CreateTaskInput } from '@/types/task';
 import type { TodoFilter } from '@/types/dashboard';
+import type {
+  ProjectRuntimePolicyEnvelope,
+  RuntimeTarget,
+  RuntimeTargetOverlayInput,
+} from '@/types/runtime-target';
 import {
   agentChannelSummarySchema,
   agentsStatusSchema,
@@ -51,11 +56,14 @@ import {
   observeCraftsmanExecutionsResponseSchema,
   projectSchema,
   projectContextDeliveryResponseSchema,
+  projectRuntimePolicyResponseSchema,
   projectWorkbenchResponseSchema,
   projectMembershipSchema,
   promoteTodoResultSchema,
   runtimeDiagnosisResultSchema,
   runtimeRecoveryActionSchema,
+  runtimeTargetListResponseSchema,
+  runtimeTargetResponseSchema,
   skillCatalogListResponseSchema,
   taskSchema,
   taskConversationListResponseSchema,
@@ -67,6 +75,8 @@ import {
   unifiedHealthSnapshotSchema,
   templateValidationResponseSchema,
   todoItemSchema,
+  updateProjectRuntimePolicyRequestSchema,
+  upsertRuntimeTargetOverlayRequestSchema,
   validateWorkflowRequestSchema,
   workspaceBootstrapStatusSchema,
 } from '@agora-ts/contracts';
@@ -602,6 +612,81 @@ export type ApiCcConnectHeartbeatReceiptDto = z.infer<typeof ccConnectHeartbeatR
 export type ApiCcConnectHeartbeatIntervalReceiptDto = z.infer<typeof ccConnectHeartbeatIntervalReceiptSchema>;
 export type ApiCcConnectCronJobDto = z.infer<typeof ccConnectCronJobSchema>;
 export type ApiCcConnectCronCreateReceiptDto = z.infer<typeof ccConnectCronCreateReceiptSchema>;
+
+function mapRuntimeTargetDto(dto: z.infer<typeof runtimeTargetResponseSchema>['runtime_target']): RuntimeTarget {
+  return {
+    runtimeTargetRef: dto.runtime_target_ref,
+    inventoryKind: dto.inventory_kind,
+    runtimeProvider: dto.runtime_provider,
+    runtimeFlavor: dto.runtime_flavor,
+    hostFramework: dto.host_framework,
+    primaryModel: dto.primary_model,
+    workspaceDir: dto.workspace_dir,
+    channelProviders: dto.channel_providers,
+    inventorySources: dto.inventory_sources,
+    discordBotUserIds: dto.discord_bot_user_ids,
+    enabled: dto.enabled,
+    displayName: dto.display_name,
+    tags: dto.tags,
+    allowedProjects: dto.allowed_projects,
+    defaultRoles: dto.default_roles,
+    presentationMode: dto.presentation_mode,
+    presentationProvider: dto.presentation_provider,
+    presentationIdentityRef: dto.presentation_identity_ref,
+    metadata: dto.metadata,
+    discovered: dto.discovered,
+  };
+}
+
+function mapProjectRuntimePolicyResponse(
+  dto: z.infer<typeof projectRuntimePolicyResponseSchema>,
+): ProjectRuntimePolicyEnvelope {
+  return {
+    projectId: dto.project_id,
+    runtimePolicy: {
+      runtimeTargets: dto.runtime_policy.runtime_targets
+        ? {
+            ...(dto.runtime_policy.runtime_targets.flavors
+              ? { flavors: dto.runtime_policy.runtime_targets.flavors }
+              : {}),
+            ...(dto.runtime_policy.runtime_targets.default
+              ? { default: dto.runtime_policy.runtime_targets.default }
+              : {}),
+            ...(dto.runtime_policy.runtime_targets.default_coding
+              ? { defaultCoding: dto.runtime_policy.runtime_targets.default_coding }
+              : {}),
+            ...(dto.runtime_policy.runtime_targets.default_review
+              ? { defaultReview: dto.runtime_policy.runtime_targets.default_review }
+              : {}),
+          }
+        : null,
+      roleRuntimePolicy: Object.fromEntries(
+        Object.entries(dto.runtime_policy.role_runtime_policy).map(([role, policy]) => [
+          role,
+          {
+            ...(policy.preferred_flavor !== undefined
+              ? { preferredFlavor: policy.preferred_flavor }
+              : {}),
+          },
+        ]),
+      ),
+    },
+  };
+}
+
+function toRuntimeTargetOverlayPayload(input: RuntimeTargetOverlayInput) {
+  return upsertRuntimeTargetOverlayRequestSchema.parse({
+    ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+    ...(input.displayName !== undefined ? { display_name: input.displayName } : {}),
+    ...(input.tags !== undefined ? { tags: input.tags } : {}),
+    ...(input.allowedProjects !== undefined ? { allowed_projects: input.allowedProjects } : {}),
+    ...(input.defaultRoles !== undefined ? { default_roles: input.defaultRoles } : {}),
+    ...(input.presentationMode !== undefined ? { presentation_mode: input.presentationMode } : {}),
+    ...(input.presentationProvider !== undefined ? { presentation_provider: input.presentationProvider } : {}),
+    ...(input.presentationIdentityRef !== undefined ? { presentation_identity_ref: input.presentationIdentityRef } : {}),
+    ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+  });
+}
 
 class ApiError extends Error {
   status: number;
@@ -1149,6 +1234,40 @@ export function getAgentsStatus(): Promise<ApiAgentsStatusDto> {
   return request<ApiAgentsStatusDto>('/agents/status', agentsStatusSchema);
 }
 
+export function listRuntimeTargets(): Promise<RuntimeTarget[]> {
+  return request('/runtime-targets', runtimeTargetListResponseSchema)
+    .then((response) => response.runtime_targets.map(mapRuntimeTargetDto));
+}
+
+export function getRuntimeTarget(runtimeTargetRef: string): Promise<RuntimeTarget> {
+  return request(`/runtime-targets/${encodeURIComponent(runtimeTargetRef)}`, runtimeTargetResponseSchema)
+    .then((response) => mapRuntimeTargetDto(response.runtime_target));
+}
+
+export function updateRuntimeTargetOverlay(
+  runtimeTargetRef: string,
+  input: RuntimeTargetOverlayInput,
+): Promise<RuntimeTarget> {
+  return request(
+    `/runtime-targets/${encodeURIComponent(runtimeTargetRef)}/overlay`,
+    runtimeTargetResponseSchema,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(toRuntimeTargetOverlayPayload(input)),
+    },
+  ).then((response) => mapRuntimeTargetDto(response.runtime_target));
+}
+
+export function clearRuntimeTargetOverlay(runtimeTargetRef: string): Promise<void> {
+  return request(
+    `/runtime-targets/${encodeURIComponent(runtimeTargetRef)}/overlay`,
+    runtimeTargetResponseSchema,
+    {
+      method: 'DELETE',
+    },
+  ).then(() => undefined);
+}
+
 export function getAgentChannelDetail(channel: string): Promise<ApiAgentChannelSummaryDto> {
   return request<ApiAgentChannelSummaryDto>(`/agents/channels/${encodeURIComponent(channel)}`, agentChannelSummarySchema);
 }
@@ -1528,6 +1647,62 @@ export function listProjectMembers(projectId: string): Promise<ApiProjectMembers
     `/projects/${encodeURIComponent(projectId)}/members`,
     projectMembershipListResponseSchema,
   ).then((response) => response.memberships);
+}
+
+export function getProjectRuntimePolicy(projectId: string): Promise<ProjectRuntimePolicyEnvelope> {
+  return request(
+    `/projects/${encodeURIComponent(projectId)}/runtime-policy`,
+    projectRuntimePolicyResponseSchema,
+  ).then(mapProjectRuntimePolicyResponse);
+}
+
+export function updateProjectRuntimePolicy(
+  projectId: string,
+  input: {
+    runtimeTargets?: {
+      flavors?: Record<string, string>;
+      default?: string;
+      defaultCoding?: string;
+      defaultReview?: string;
+    } | null;
+    roleRuntimePolicy?: Record<string, { preferredFlavor?: string | null }>;
+  },
+): Promise<ProjectRuntimePolicyEnvelope> {
+  return request(
+    `/projects/${encodeURIComponent(projectId)}/runtime-policy`,
+    projectRuntimePolicyResponseSchema,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(updateProjectRuntimePolicyRequestSchema.parse({
+        ...(input.runtimeTargets !== undefined
+          ? {
+              runtime_targets: input.runtimeTargets === null
+                ? null
+                : {
+                    ...(input.runtimeTargets.flavors ? { flavors: input.runtimeTargets.flavors } : {}),
+                    ...(input.runtimeTargets.default ? { default: input.runtimeTargets.default } : {}),
+                    ...(input.runtimeTargets.defaultCoding ? { default_coding: input.runtimeTargets.defaultCoding } : {}),
+                    ...(input.runtimeTargets.defaultReview ? { default_review: input.runtimeTargets.defaultReview } : {}),
+                  },
+            }
+          : {}),
+        ...(input.roleRuntimePolicy !== undefined
+          ? {
+              role_runtime_policy: Object.fromEntries(
+                Object.entries(input.roleRuntimePolicy).map(([role, policy]) => [
+                  role,
+                  {
+                    ...(policy.preferredFlavor !== undefined
+                      ? { preferred_flavor: policy.preferredFlavor }
+                      : {}),
+                  },
+                ]),
+              ),
+            }
+          : {}),
+      })),
+    },
+  ).then(mapProjectRuntimePolicyResponse);
 }
 
 export function addProjectMember(

@@ -16,6 +16,7 @@
     { "path": "../../packages/adapters-runtime" },
     { "path": "../../packages/adapters-openclaw" },
     { "path": "../../packages/adapters-cc-connect" },
+    { "path": "../../packages/adapters-materialization" },
     { "path": "../../packages/adapters-obsidian" },
     { "path": "../../packages/adapters-discord" }
   ]
