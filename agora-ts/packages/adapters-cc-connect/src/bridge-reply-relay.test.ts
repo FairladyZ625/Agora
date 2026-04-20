@@ -68,6 +68,10 @@ describe('CcConnectBridgeReplyRelayService', () => {
           task_role: 'developer',
           source: 'template',
           join_status: 'joined',
+          desired_exposure: 'in_thread',
+          exposure_reason: null,
+          exposure_stage_id: null,
+          reconciled_at: null,
           created_at: '2026-04-14T08:00:00.000Z',
           joined_at: null,
           left_at: null,
@@ -94,7 +98,8 @@ describe('CcConnectBridgeReplyRelayService', () => {
     });
 
     service.start();
-    await handler?.({
+    expect(handler).toBeTruthy();
+    await (handler as unknown as (event: unknown) => void)({
       type: 'reply',
       session_key: 'agora-discord:thread-1:participant-1',
       reply_ctx: 'ctx-1',
@@ -219,6 +224,10 @@ describe('CcConnectBridgeReplyRelayService', () => {
           task_role: 'developer',
           source: 'template',
           join_status: 'joined',
+          desired_exposure: 'in_thread',
+          exposure_reason: null,
+          exposure_stage_id: null,
+          reconciled_at: null,
           created_at: '2026-04-14T08:00:00.000Z',
           joined_at: null,
           left_at: null,

@@ -277,7 +277,7 @@ describe('dashboard English UI', () => {
     expect(screen.getByRole('button', { name: 'English' })).toBeInTheDocument();
   });
 
-  it('renders English project detail IA while keeping operator tools collapsed by default', () => {
+  it('renders English project detail IA with operator workspace links kept out of the main work panels', () => {
     render(
       <MemoryRouter initialEntries={['/projects/proj-alpha']}>
         <Routes>
@@ -289,8 +289,8 @@ describe('dashboard English UI', () => {
     expect(screen.getByRole('heading', { name: 'Project overview' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Project surfaces' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Current work' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Operator tools' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Show operator tools' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Operator' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Operator 1 citizens and Nomos controls moved into the operator workspace\./ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Review Draft' })).not.toBeInTheDocument();
     expect(screen.getByText('In progress')).toBeInTheDocument();
     expect(screen.getByText('Pending')).toBeInTheDocument();

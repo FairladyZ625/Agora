@@ -36,16 +36,19 @@ describe('CcConnectBridgeRuntimeService', () => {
     const bindRuntimeSession = vi.fn(() => ({
       id: 'rs-1',
       participant_binding_id: 'participant-1',
-      runtime_provider: 'cc-connect',
+      runtime_provider: 'cc-connect' as const,
       runtime_session_ref: 'agora-discord:thread-1:participant-1',
       runtime_actor_ref: 'cc-connect:agora-codex-immediate',
       continuity_ref: null,
-      presence_state: 'active',
+      presence_state: 'active' as const,
       binding_reason: 'thread_bridge_dispatch',
-      desired_runtime_presence: 'detached',
+      desired_runtime_presence: 'detached' as const,
       reconcile_stage_id: null,
       reconciled_at: null,
       last_seen_at: '2026-04-14T12:00:00.000Z',
+      created_at: '2026-04-14T12:00:00.000Z',
+      updated_at: '2026-04-14T12:00:00.000Z',
+      closed_at: null,
     }));
     const upsert = vi.fn();
 
@@ -62,7 +65,7 @@ describe('CcConnectBridgeRuntimeService', () => {
         getRuntimeSessionByParticipant: vi.fn(() => null),
         bindRuntimeSession,
       },
-      liveSessionStore: { upsert },
+      liveSessionStore: { get: vi.fn(() => null), upsert },
       createClient: () => ({
         connect,
         sendMessage,
@@ -181,7 +184,7 @@ describe('CcConnectBridgeRuntimeService', () => {
         getRuntimeSessionByParticipant: vi.fn(() => null),
         bindRuntimeSession,
       },
-      liveSessionStore: { upsert },
+      liveSessionStore: { get: vi.fn(() => null), upsert },
       createClient: () => ({
         connect,
         sendMessage,

@@ -51,6 +51,16 @@ describe('CcConnectCitizenProjectionAdapter integration', () => {
   it('renders a cc-connect projection preview through CitizenService without package-root imports', () => {
     const role: RoleDefinitionRecord = {
       id: 'architect',
+      version: 1,
+      name: 'Architect',
+      member_kind: 'citizen',
+      source: 'test',
+      source_ref: null,
+      summary: 'Design systems.',
+      prompt_asset_path: 'roles/architect.md',
+      default_model_preference: null,
+      created_at: '2026-04-19T00:00:00.000Z',
+      updated_at: '2026-04-19T00:00:00.000Z',
       payload: {
         id: 'architect',
         name: 'Architect',

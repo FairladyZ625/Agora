@@ -44,15 +44,33 @@ describe('project context delivery service', () => {
       taskLookup: {
         getTask: () => ({
           id: 'OC-200',
+          version: 1,
           title: 'Implement hybrid retrieval',
           description: 'Need vector recall and lexical rerank.',
+          type: 'coding',
+          priority: 'normal',
+          creator: 'archon',
+          locale: 'zh-CN',
           project_id: 'proj-ctx',
+          state: 'active',
+          archive_status: null,
+          current_stage: null,
+          skill_policy: null,
           team: {
             members: [
               { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
               { role: 'developer', agentId: 'citizen-alpha', model_preference: 'balanced', member_kind: 'citizen' },
             ],
           },
+          workflow: { type: 'default', stages: [] },
+          control: null,
+          scheduler: null,
+          scheduler_snapshot: null,
+          discord: null,
+          metrics: null,
+          error_detail: null,
+          created_at: '2026-04-14T00:00:00.000Z',
+          updated_at: '2026-04-14T00:00:00.000Z',
         }),
       },
       taskBrainBindingService: {

@@ -3,11 +3,13 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, TaskConversationReadCursorRepository, TaskConversationRepository, TaskContextBindingRepository } from '@agora-ts/db';
+import type { ParticipantBindingRecord } from '@agora-ts/contracts';
 import { createTaskServiceFromDb } from '@agora-ts/testing';
 import { TaskContextBindingService } from './task-context-binding-service.js';
 import { TaskConversationService } from './task-conversation-service.js';
 import { TaskInboundService } from './task-inbound-service.js';
 import { RuntimeThreadMessageRouter } from './runtime-message-ports.js';
+import type { RuntimeThreadMessageInput } from './runtime-message-ports.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
@@ -318,7 +320,7 @@ describe('task inbound service', () => {
       thread_ref: 'thread-inbound-route-1',
     });
 
-    const participants = [
+    const participants: ParticipantBindingRecord[] = [
       {
         id: 'participant-1',
         task_id: task.id,
@@ -328,12 +330,16 @@ describe('task inbound service', () => {
         task_role: 'developer',
         source: 'template',
         join_status: 'joined',
+        desired_exposure: 'in_thread',
+        exposure_reason: null,
+        exposure_stage_id: null,
+        reconciled_at: null,
         created_at: '2026-03-17T13:30:00.000Z',
         joined_at: null,
         left_at: null,
       },
     ];
-    const routed: Array<Record<string, unknown>> = [];
+    const routed: RuntimeThreadMessageInput[] = [];
     const router = new RuntimeThreadMessageRouter([{
       runtime_provider: 'cc-connect',
       sendInboundMessage: async (input) => {
@@ -418,7 +424,7 @@ describe('task inbound service', () => {
       thread_ref: 'thread-inbound-route-2',
     });
 
-    const participants = [
+    const participants: ParticipantBindingRecord[] = [
       {
         id: 'participant-2',
         task_id: task.id,
@@ -428,12 +434,16 @@ describe('task inbound service', () => {
         task_role: 'developer',
         source: 'template',
         join_status: 'joined',
+        desired_exposure: 'in_thread',
+        exposure_reason: null,
+        exposure_stage_id: null,
+        reconciled_at: null,
         created_at: '2026-03-17T13:40:00.000Z',
         joined_at: null,
         left_at: null,
       },
     ];
-    const routed: Array<Record<string, unknown>> = [];
+    const routed: RuntimeThreadMessageInput[] = [];
     const router = new RuntimeThreadMessageRouter([{
       runtime_provider: 'cc-connect',
       sendInboundMessage: async (input) => {
@@ -507,7 +517,7 @@ describe('task inbound service', () => {
       thread_ref: 'thread-inbound-route-3',
     });
 
-    const participants = [
+    const participants: ParticipantBindingRecord[] = [
       {
         id: 'participant-3',
         task_id: task.id,
@@ -517,12 +527,16 @@ describe('task inbound service', () => {
         task_role: 'developer',
         source: 'template',
         join_status: 'joined',
+        desired_exposure: 'in_thread',
+        exposure_reason: null,
+        exposure_stage_id: null,
+        reconciled_at: null,
         created_at: '2026-03-17T13:50:00.000Z',
         joined_at: null,
         left_at: null,
       },
     ];
-    const routed: Array<Record<string, unknown>> = [];
+    const routed: RuntimeThreadMessageInput[] = [];
     const router = new RuntimeThreadMessageRouter([{
       runtime_provider: 'cc-connect',
       sendInboundMessage: async (input) => {
