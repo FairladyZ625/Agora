@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
+import { ProjectRuntimePolicyPanel } from '@/components/project/ProjectRuntimePolicyPanel';
 import { useProjectWorkspacePage } from '@/hooks/useProjectWorkspacePage';
 import { useProjectDetailPageCopy } from '@/lib/dashboardCopy';
 import { buildProjectTaskHref } from '@/lib/projectTaskRoutes';
@@ -49,6 +50,7 @@ export function ProjectDetailPage() {
 
   const { project, overview, surfaces, work, operator } = selectedProject;
   const memberships = (projectMembershipsByProject[projectId] ?? []).filter((entry) => entry.status === 'active');
+  const projectRoles = Array.from(new Set(operator.citizens.map((citizen) => citizen.roleId)));
   const activeTasks = overview.stats.activeTaskCount;
   const waitingReviewTasks = overview.stats.reviewTaskCount;
   const pendingTodos = overview.stats.pendingTodoCount;
@@ -146,6 +148,8 @@ export function ProjectDetailPage() {
           </div>
         </div>
       </section>
+
+      <ProjectRuntimePolicyPanel projectId={project.id} roles={projectRoles} />
 
       <section className="surface-panel surface-panel--workspace" data-testid="project-surfaces-panel">
         <div className="section-title-row">

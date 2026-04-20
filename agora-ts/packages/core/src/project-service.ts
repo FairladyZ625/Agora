@@ -1,5 +1,15 @@
 import { randomBytes } from 'node:crypto';
-import type { CreateProjectAdminDto, CreateProjectAgentRosterEntryDto, CreateProjectMembershipDto, IProjectRepository, ITaskRepository, ProjectRecord, TransactionManager } from '@agora-ts/contracts';
+import type {
+  CreateProjectAdminDto,
+  CreateProjectAgentRosterEntryDto,
+  CreateProjectMembershipDto,
+  IProjectRepository,
+  ITaskRepository,
+  ProjectRecord,
+  ProjectRuntimePolicyDto,
+  TransactionManager,
+  UpdateProjectRuntimePolicyRequestDto,
+} from '@agora-ts/contracts';
 import { NotFoundError } from './errors.js';
 import type { ProjectAgentRosterService } from './project-agent-roster-service.js';
 import type { ProjectMembershipService } from './project-membership-service.js';
@@ -146,6 +156,23 @@ export class ProjectService {
   ): ProjectRuntimeTargetResolution | null {
     const project = this.requireProject(projectId);
     return resolveProjectRuntimeTargetFromMetadata(project.metadata, input);
+  }
+
+  getProjectRuntimePolicy(projectId: string): ProjectRuntimePolicyDto {
+    const project = this.requireProject(projectId);
+    return extractProjectRuntimePolicy(project.metadata);
+  }
+
+  updateProjectRuntimePolicy(
+    projectId: string,
+    updates: UpdateProjectRuntimePolicyRequestDto,
+  ): ProjectRuntimePolicyDto {
+    const project = this.requireProject(projectId);
+    const nextMetadata = mergeProjectRuntimePolicy(project.metadata, updates);
+    const updated = this.projects.updateProject(projectId, {
+      metadata: nextMetadata,
+    });
+    return extractProjectRuntimePolicy(updated.metadata);
   }
 
   listProjectMemberships(projectId: string) {
@@ -422,6 +449,82 @@ function resolveProjectRuntimeTargetFromMetadata(
   }
 
   return null;
+}
+
+function extractProjectRuntimePolicy(metadata: Record<string, unknown> | null | undefined): ProjectRuntimePolicyDto {
+  const root = asRecord(metadata);
+  const runtimeTargets = asRecord(root?.runtime_targets) ?? asRecord(asRecord(root?.agora)?.runtime_targets);
+  const roleRuntimePolicy = asRecord(root?.role_runtime_policy) ?? asRecord(asRecord(root?.agora)?.role_runtime_policy);
+
+  return {
+    runtime_targets: runtimeTargets ? normalizeRuntimeTargetsPolicy(runtimeTargets) : null,
+    role_runtime_policy: normalizeRoleRuntimePolicy(roleRuntimePolicy),
+  };
+}
+
+function mergeProjectRuntimePolicy(
+  metadata: Record<string, unknown> | null | undefined,
+  updates: UpdateProjectRuntimePolicyRequestDto,
+): Record<string, unknown> | null {
+  const root = asRecord(metadata) ?? {};
+
+  if (updates.runtime_targets !== undefined) {
+    if (updates.runtime_targets === null) {
+      delete root.runtime_targets;
+    } else {
+      root.runtime_targets = normalizeRuntimeTargetsPolicy(updates.runtime_targets);
+    }
+  }
+
+  if (updates.role_runtime_policy !== undefined) {
+    root.role_runtime_policy = normalizeRoleRuntimePolicy(asRecord(updates.role_runtime_policy));
+  }
+
+  return Object.keys(root).length > 0 ? root : null;
+}
+
+function normalizeRuntimeTargetsPolicy(value: Record<string, unknown>) {
+  const flavors = asRecord(value.flavors);
+  const normalized: Record<string, unknown> = {};
+  if (flavors) {
+    const nextFlavors = Object.fromEntries(
+      Object.entries(flavors).filter(([, item]) => typeof item === 'string' && item.length > 0),
+    );
+    if (Object.keys(nextFlavors).length > 0) {
+      normalized.flavors = nextFlavors;
+    }
+  }
+  if (typeof value.default === 'string' && value.default.length > 0) {
+    normalized.default = value.default;
+  }
+  if (typeof value.default_coding === 'string' && value.default_coding.length > 0) {
+    normalized.default_coding = value.default_coding;
+  }
+  if (typeof value.default_review === 'string' && value.default_review.length > 0) {
+    normalized.default_review = value.default_review;
+  }
+  return normalized;
+}
+
+function normalizeRoleRuntimePolicy(value: Record<string, unknown> | null) {
+  if (!value) {
+    return {};
+  }
+  const normalized: Record<string, { preferred_flavor: string | null }> = {};
+  for (const [role, rawPolicy] of Object.entries(value)) {
+    const policy = asRecord(rawPolicy);
+    if (!policy) {
+      continue;
+    }
+    if (policy.preferred_flavor === null) {
+      normalized[role] = { preferred_flavor: null };
+      continue;
+    }
+    if (typeof policy.preferred_flavor === 'string' && policy.preferred_flavor.length > 0) {
+      normalized[role] = { preferred_flavor: policy.preferred_flavor };
+    }
+  }
+  return normalized;
 }
 
 function resolveRoleRuntimePolicyFlavor(metadata: Record<string, unknown> | null, role: string | null) {

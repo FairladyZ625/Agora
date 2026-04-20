@@ -17,6 +17,7 @@ import { WorkspaceBootstrapPage } from '@/pages/WorkspaceBootstrapPage';
 import { LegacyTasksRedirectPage } from '@/pages/LegacyTasksRedirectPage';
 import { CreateTaskPage } from '@/pages/CreateTaskPage';
 import { AgentsPage } from '@/pages/AgentsPage';
+import { RuntimeTargetsPage } from '@/pages/RuntimeTargetsPage';
 import { ExternalBridgesPage } from '@/pages/ExternalBridgesPage';
 import { TodosPage } from '@/pages/TodosPage';
 import { ArchivePage } from '@/pages/ArchivePage';
@@ -69,6 +70,7 @@ export default function App() {
           <Route path="operator" element={<ProjectOperatorPage />} />
         </Route>
         <Route path="/agents" element={<AgentsPage />} />
+        <Route path="/runtime-targets" element={<RuntimeTargetsPage />} />
         <Route path="/bridges" element={<ExternalBridgesPage />} />
         <Route path="/todos" element={<TodosPage />} />
         <Route path="/archive" element={<ArchivePage />} />

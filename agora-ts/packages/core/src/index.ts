@@ -70,6 +70,8 @@ export type { CraftsmanExecutionTailPort, CraftsmanTailPortExecution } from './c
 
 export type { DashboardQueryServiceOptions } from './dashboard-query-service.js';
 export { DashboardQueryService } from './dashboard-query-service.js';
+export type { RuntimeTargetServiceOptions } from './runtime-target-service.js';
+export { RuntimeTargetService } from './runtime-target-service.js';
 export { isDeveloperRegressionEnabled, isRegressionOperatorProxyEnabled } from './dev-regression-mode.js';
 export { ActivityKind, AgentRole, CollaborationMode, CraftsmanType, DispatchStatus, EscalationLevel, GateType, GovernancePreset, SubtaskState, TaskPriority, TaskState, TaskType } from './enums.js';
 export { NotFoundError, PermissionDeniedError } from './errors.js';

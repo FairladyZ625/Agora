@@ -52,6 +52,7 @@ function summarizePayload(payload: Record<string, unknown> | null): string {
 function mapAgentDto(agent: ApiAgentsStatusDto['agents'][number]): AgentStatusItem {
   return {
     id: agent.id,
+    inventoryKind: agent.inventory_kind,
     role: agent.role,
     status: agent.status,
     presence: agent.presence,
@@ -60,10 +61,14 @@ function mapAgentDto(agent: ApiAgentsStatusDto['agents'][number]): AgentStatusIt
     presenceReason: agent.presence_reason ?? null,
     channelProviders: agent.channel_providers,
     hostFramework: agent.host_framework ?? null,
+    runtimeProvider: agent.runtime_provider ?? null,
+    runtimeFlavor: agent.runtime_flavor ?? null,
+    runtimeTargetRef: agent.runtime_target_ref ?? null,
     inventorySources: agent.inventory_sources,
     primaryModel: agent.primary_model ?? null,
     workspaceDir: agent.workspace_dir ?? null,
     accountId: agent.account_id ?? null,
+    discordBotUserIds: agent.discord_bot_user_ids ?? [],
     activeTaskIds: agent.active_task_ids,
     activeSubtaskIds: agent.active_subtask_ids,
     taskCount: agent.active_task_ids.length,

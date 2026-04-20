@@ -4,10 +4,11 @@ import { useLocation, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { formatSelectabilityReason, isSelectableAgent, resolveAgentSelectability } from '@/lib/agentSelectability';
 import { buildCreateTaskInput, buildInitialRoleAssignments } from '@/lib/createTaskDraft';
-import { listSkills } from '@/lib/api';
+import { listRuntimeTargets, listSkills } from '@/lib/api';
 import { buildCraftsmanInventory, isCraftsmanRole, normalizeRoleBindingId } from '@/lib/orchestrationRoles';
 import { buildProjectBrainDraftPreamble, parseProjectBrainSourceContext } from '@/lib/projectBrainContext';
 import { buildProjectTaskHref } from '@/lib/projectTaskRoutes';
+import { getRuntimeTargetLabel, isRuntimeTargetAllowedForProject } from '@/lib/runtimeTargetUtils';
 import { getPriorityMeta } from '@/lib/taskMeta';
 import { useCreateTaskPageCopy } from '@/lib/dashboardCopy';
 import { useLocale } from '@/lib/i18n';
@@ -18,6 +19,7 @@ import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useTemplateStore } from '@/stores/templateStore';
 import type { AgentStatusItem } from '@/types/dashboard';
 import type { ProjectMembership } from '@/types/project';
+import type { RuntimeTarget } from '@/types/runtime-target';
 
 const SKILL_USAGE_STORAGE_KEY = 'agora-create-task-skill-usage';
 const MAX_SKILL_USAGE_ENTRIES = 50;
@@ -234,6 +236,7 @@ export function CreateTaskPage() {
   const [priority, setPriority] = useState<'low' | 'normal' | 'high'>('normal');
   const [projectId, setProjectId] = useState('');
   const [assignments, setAssignments] = useState<Record<string, string>>({});
+  const [runtimeTargets, setRuntimeTargets] = useState<RuntimeTarget[]>([]);
   const [availableSkills, setAvailableSkills] = useState<Array<{ skill_ref: string; resolved_path: string }>>([]);
   const [globalSkillRefs, setGlobalSkillRefs] = useState<string[]>([]);
   const [roleSkillRefs, setRoleSkillRefs] = useState<Record<string, string[]>>({});
@@ -292,6 +295,11 @@ export function CreateTaskPage() {
     }).catch(() => {
       setAvailableSkills([]);
     });
+    void listRuntimeTargets().then((targets) => {
+      setRuntimeTargets(targets);
+    }).catch(() => {
+      setRuntimeTargets([]);
+    });
   }, [fetchProjects, fetchStatus, fetchTemplates]);
 
   useEffect(() => {
@@ -340,8 +348,30 @@ export function CreateTaskPage() {
     }
   }, [agents, assignments, craftsmanRuntime, selectedTemplate]);
 
-  const availableAgents = agents.filter(isSelectableAgent);
   const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
+  const runtimeTargetByRef = useMemo(
+    () => new Map(runtimeTargets.map((target) => [target.runtimeTargetRef, target])),
+    [runtimeTargets],
+  );
+  const selectableAgents = useMemo(
+    () => agents.filter(isSelectableAgent),
+    [agents],
+  );
+  const availableAgents = useMemo(
+    () => selectableAgents.filter((agent) => agent.inventoryKind !== 'runtime_target'),
+    [selectableAgents],
+  );
+  const availableRuntimeTargets = useMemo(
+    () => selectableAgents.filter((agent) => {
+      if (agent.inventoryKind !== 'runtime_target') {
+        return false;
+      }
+      const runtimeTargetRef = agent.runtimeTargetRef ?? agent.id;
+      const runtimeTarget = runtimeTargetByRef.get(runtimeTargetRef);
+      return runtimeTarget ? isRuntimeTargetAllowedForProject(runtimeTarget, projectId || null) : true;
+    }),
+    [projectId, runtimeTargetByRef, selectableAgents],
+  );
   const skillCatalog = useMemo(
     () => [...availableSkills].sort((left, right) => left.skill_ref.localeCompare(right.skill_ref)),
     [availableSkills],
@@ -896,21 +926,67 @@ export function CreateTaskPage() {
                         <strong className="type-heading-sm">{member.role}</strong>
                         {member.modelPreference ? <span className="type-text-xs">{member.modelPreference}</span> : null}
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {(isCraftsmanRole(member.role, member.memberKind ?? null) ? availableCraftsmen : availableAgents.map((agent) => agent.id)).length > 0
-                          ? (isCraftsmanRole(member.role, member.memberKind ?? null) ? availableCraftsmen : availableAgents.map((agent) => agent.id)).map((agentId) => (
-                              <button
-                                key={`${member.role}-${agentId}`}
-                                type="button"
-                                aria-pressed={assignments[member.role] === agentId}
-                                onClick={() => setAssignments((current) => ({ ...current, [member.role]: agentId }))}
-                                className={assignments[member.role] === agentId ? 'choice-pill choice-pill--active' : 'choice-pill'}
-                              >
-                                {agentId}
-                              </button>
-                            ))
-                          : <span className="type-body-sm">{createTaskCopy.noAgentLabel}</span>}
-                      </div>
+                      {isCraftsmanRole(member.role, member.memberKind ?? null) ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {availableCraftsmen.length > 0
+                            ? availableCraftsmen.map((agentId) => (
+                                <button
+                                  key={`${member.role}-${agentId}`}
+                                  type="button"
+                                  aria-pressed={assignments[member.role] === agentId}
+                                  onClick={() => setAssignments((current) => ({ ...current, [member.role]: agentId }))}
+                                  className={assignments[member.role] === agentId ? 'choice-pill choice-pill--active' : 'choice-pill'}
+                                >
+                                  {agentId}
+                                </button>
+                              ))
+                            : <span className="type-body-sm">{createTaskCopy.noAgentLabel}</span>}
+                        </div>
+                      ) : (
+                        <div className="mt-3 space-y-4">
+                          <div>
+                            <span className="detail-card__label">{createTaskCopy.candidateGroups.nativeAgents}</span>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {availableAgents.length > 0
+                                ? availableAgents.map((agent) => (
+                                    <button
+                                      key={`${member.role}-${agent.id}`}
+                                      type="button"
+                                      aria-pressed={assignments[member.role] === agent.id}
+                                      onClick={() => setAssignments((current) => ({ ...current, [member.role]: agent.id }))}
+                                      className={assignments[member.role] === agent.id ? 'choice-pill choice-pill--active' : 'choice-pill'}
+                                    >
+                                      {agent.id}
+                                    </button>
+                                  ))
+                                : <span className="type-body-sm">{createTaskCopy.noAgentLabel}</span>}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="detail-card__label">{createTaskCopy.candidateGroups.runtimeTargets}</span>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {availableRuntimeTargets.length > 0
+                                ? availableRuntimeTargets.map((agent) => {
+                                    const runtimeTargetRef = agent.runtimeTargetRef ?? agent.id;
+                                    const runtimeTarget = runtimeTargetByRef.get(runtimeTargetRef);
+                                    const label = runtimeTarget ? getRuntimeTargetLabel(runtimeTarget) : runtimeTargetRef;
+                                    return (
+                                      <button
+                                        key={`${member.role}-${runtimeTargetRef}`}
+                                        type="button"
+                                        aria-pressed={assignments[member.role] === runtimeTargetRef}
+                                        onClick={() => setAssignments((current) => ({ ...current, [member.role]: runtimeTargetRef }))}
+                                        className={assignments[member.role] === runtimeTargetRef ? 'choice-pill choice-pill--active' : 'choice-pill'}
+                                      >
+                                        {label}
+                                      </button>
+                                    );
+                                  })
+                                : <span className="type-body-sm">{createTaskCopy.noAgentLabel}</span>}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       {(restrictedSuggestedByRole[member.role] ?? []).length > 0 ? (
                         <div className="mt-3">
                           <span className="detail-card__label">{createTaskCopy.restrictedSuggestedLabel}</span>

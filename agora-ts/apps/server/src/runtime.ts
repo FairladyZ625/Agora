@@ -13,8 +13,13 @@ import {
   ProjectBrainIndexQueueService,
   ProjectBrainIndexService,
   ProjectBrainIndexWorkerService,
+  RuntimeTargetService,
+  CompositeAgentInventorySource,
 } from '@agora-ts/core';
 import { OpenAiCompatibleProjectBrainEmbeddingAdapter, QdrantProjectBrainVectorIndexAdapter } from '@agora-ts/adapters-brain';
+import { CcConnectAgentRegistry } from '@agora-ts/adapters-cc-connect';
+import { OpenClawAgentRegistry } from '@agora-ts/adapters-openclaw';
+import { RuntimeTargetOverlayRepository } from '@agora-ts/db';
 import { existsSync } from 'node:fs';
 
 export interface CreateServerRuntimeOptions extends ServerCompositionOptions {
@@ -272,6 +277,17 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     ...(options.isCraftsmanSessionAlive ? { isCraftsmanSessionAlive: options.isCraftsmanSessionAlive } : {}),
   }, options.factories);
   const { taskService } = composition;
+  const runtimeTargetService = new RuntimeTargetService({
+    agentInventory: new CompositeAgentInventorySource([
+      new OpenClawAgentRegistry(
+        process.env.AGORA_OPENCLAW_CONFIG_PATH
+          ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
+          : {},
+      ),
+      new CcConnectAgentRegistry(),
+    ]),
+    overlayRepository: new RuntimeTargetOverlayRepository(db),
+  });
   composition.discordPresenceService?.start();
   composition.discordThreadIngressService?.start();
   composition.ccConnectBridgeRuntimeService?.start();
@@ -314,6 +330,7 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     config: config as AgoraConfig,
     db,
     ...composition,
+    runtimeTargetService,
     apiAuth: config.api_auth,
     dashboardAuth: {
       enabled: config.dashboard_auth.enabled,

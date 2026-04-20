@@ -206,6 +206,98 @@ describe('project service', () => {
     });
   });
 
+  it('reads normalized project runtime policy from project metadata', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = createProjectServiceFromDb(db);
+
+    service.createProject({
+      id: 'proj-runtime-policy',
+      name: 'Project Runtime Policy',
+      metadata: {
+        runtime_targets: {
+          flavors: {
+            codex: 'cc-connect:agora-codex',
+            'claude-code': 'cc-connect:agora-claude',
+          },
+          default_coding: 'cc-connect:agora-codex',
+          default_review: 'cc-connect:agora-claude',
+        },
+        role_runtime_policy: {
+          reviewer: {
+            preferred_flavor: 'claude-code',
+          },
+        },
+      },
+    });
+
+    expect(service.getProjectRuntimePolicy('proj-runtime-policy')).toEqual({
+      runtime_targets: {
+        flavors: {
+          codex: 'cc-connect:agora-codex',
+          'claude-code': 'cc-connect:agora-claude',
+        },
+        default_coding: 'cc-connect:agora-codex',
+        default_review: 'cc-connect:agora-claude',
+      },
+      role_runtime_policy: {
+        reviewer: {
+          preferred_flavor: 'claude-code',
+        },
+      },
+    });
+  });
+
+  it('updates project runtime policy without overwriting unrelated metadata', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = createProjectServiceFromDb(db);
+
+    service.createProject({
+      id: 'proj-runtime-policy-update',
+      name: 'Project Runtime Policy Update',
+      metadata: {
+        repo_path: '/repo/agora',
+      },
+    });
+
+    const updated = service.updateProjectRuntimePolicy('proj-runtime-policy-update', {
+      runtime_targets: {
+        default_coding: 'cc-connect:agora-codex',
+        default_review: 'cc-connect:agora-claude',
+      },
+      role_runtime_policy: {
+        reviewer: {
+          preferred_flavor: 'claude-code',
+        },
+      },
+    });
+
+    expect(updated).toEqual({
+      runtime_targets: {
+        default_coding: 'cc-connect:agora-codex',
+        default_review: 'cc-connect:agora-claude',
+      },
+      role_runtime_policy: {
+        reviewer: {
+          preferred_flavor: 'claude-code',
+        },
+      },
+    });
+    expect(service.requireProject('proj-runtime-policy-update').metadata).toMatchObject({
+      repo_path: '/repo/agora',
+      runtime_targets: {
+        default_coding: 'cc-connect:agora-codex',
+        default_review: 'cc-connect:agora-claude',
+      },
+      role_runtime_policy: {
+        reviewer: {
+          preferred_flavor: 'claude-code',
+        },
+      },
+    });
+  });
+
   it('writes, lists, reads, and searches project knowledge docs', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

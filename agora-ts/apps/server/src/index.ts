@@ -14,6 +14,7 @@ export function createAppFromRuntime(runtime: ReturnType<typeof createServerRunt
     projectBrainDoctorService: runtime.projectBrainDoctorService,
     citizenService: runtime.citizenService,
     dashboardQueryService: runtime.dashboardQueryService,
+    runtimeTargetService: runtime.runtimeTargetService,
     inboxService: runtime.inboxService,
     templateAuthoringService: runtime.templateAuthoringService,
     liveSessionStore: runtime.liveSessionStore,

@@ -95,6 +95,11 @@ import {
   projectContextHealthResponseSchema,
   projectContextRetrieveRequestSchema,
   projectContextRetrieveResponseSchema,
+  projectRuntimePolicyResponseSchema,
+  runtimeTargetListResponseSchema,
+  runtimeTargetResponseSchema,
+  updateProjectRuntimePolicyRequestSchema,
+  upsertRuntimeTargetOverlayRequestSchema,
   type HealthResponse,
   unifiedHealthSnapshotSchema,
   liveSessionSchema,
@@ -158,6 +163,7 @@ import {
   type TaskService,
   type TemplateAuthoringService,
   type WorkspaceBootstrapService,
+  type RuntimeTargetService,
   WorkspaceBootstrapService as WorkspaceBootstrapServiceImpl,
 } from '@agora-ts/core';
 import {
@@ -200,6 +206,7 @@ export interface BuildAppOptions {
   workspaceBootstrapService?: WorkspaceBootstrapService;
   citizenService?: CitizenService;
   dashboardQueryService?: DashboardQueryService;
+  runtimeTargetService?: RuntimeTargetService;
   ccConnectInspectionService?: CcConnectInspectionService;
   ccConnectManagementService?: CcConnectManagementService;
   ccConnectThreadSessionService?: CcConnectThreadSessionServiceLike;
@@ -1061,6 +1068,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   const contextRetrievalService = options.contextRetrievalService;
   const citizenService = options.citizenService;
   const dashboardQueryService = options.dashboardQueryService;
+  const runtimeTargetService = options.runtimeTargetService;
   const ccConnectInspectionService = options.ccConnectInspectionService ?? new CcConnectInspectionService();
   const ccConnectManagementService = options.ccConnectManagementService ?? new CcConnectManagementService();
   const ccConnectThreadSessionService = options.ccConnectThreadSessionService;
@@ -4456,6 +4464,96 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.status(503).send({ message: 'Dashboard query service is not configured' });
     }
     return reply.send(dashboardQueryService.getAgentsStatus());
+  });
+
+  app.get('/api/runtime-targets', async (_request, reply) => {
+    if (!runtimeTargetService) {
+      return reply.status(503).send({ message: 'Runtime target service is not configured' });
+    }
+    return reply.send(runtimeTargetListResponseSchema.parse({
+      runtime_targets: runtimeTargetService.listRuntimeTargets(),
+    }));
+  });
+
+  app.get('/api/runtime-targets/:runtimeTargetRef', async (request, reply) => {
+    if (!runtimeTargetService) {
+      return reply.status(503).send({ message: 'Runtime target service is not configured' });
+    }
+    try {
+      const params = request.params as { runtimeTargetRef: string };
+      return reply.send(runtimeTargetResponseSchema.parse({
+        runtime_target: runtimeTargetService.getRuntimeTarget(params.runtimeTargetRef),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.patch('/api/runtime-targets/:runtimeTargetRef/overlay', async (request, reply) => {
+    if (!runtimeTargetService) {
+      return reply.status(503).send({ message: 'Runtime target service is not configured' });
+    }
+    try {
+      const params = request.params as { runtimeTargetRef: string };
+      const payload = upsertRuntimeTargetOverlayRequestSchema.parse(request.body);
+      runtimeTargetService.upsertOverlay(params.runtimeTargetRef, payload);
+      return reply.send(runtimeTargetResponseSchema.parse({
+        runtime_target: runtimeTargetService.getRuntimeTarget(params.runtimeTargetRef),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.delete('/api/runtime-targets/:runtimeTargetRef/overlay', async (request, reply) => {
+    if (!runtimeTargetService) {
+      return reply.status(503).send({ message: 'Runtime target service is not configured' });
+    }
+    try {
+      const params = request.params as { runtimeTargetRef: string };
+      runtimeTargetService.clearOverlay(params.runtimeTargetRef);
+      return reply.send(runtimeTargetResponseSchema.parse({
+        runtime_target: runtimeTargetService.getRuntimeTarget(params.runtimeTargetRef),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/projects/:projectId/runtime-policy', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      return reply.send(projectRuntimePolicyResponseSchema.parse({
+        project_id: params.projectId,
+        runtime_policy: projectService.getProjectRuntimePolicy(params.projectId),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.patch('/api/projects/:projectId/runtime-policy', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      const payload = updateProjectRuntimePolicyRequestSchema.parse(request.body);
+      return reply.send(projectRuntimePolicyResponseSchema.parse({
+        project_id: params.projectId,
+        runtime_policy: projectService.updateProjectRuntimePolicy(params.projectId, payload),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
   });
 
   app.get('/api/skills', async (_request, reply) => {
