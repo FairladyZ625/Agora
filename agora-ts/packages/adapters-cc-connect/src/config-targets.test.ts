@@ -84,6 +84,7 @@ token = "MTQ5MTc0Nzg3Nzc5MjM4NzIwMw.fake.fake"
 
     expect(targets.map((item) => ({
       projectName: item.projectName,
+      runtimeFlavor: item.runtimeFlavor,
       baseUrl: item.management.baseUrl,
       token: item.management.token,
       bridgeBaseUrl: item.bridge.baseUrl,
@@ -92,6 +93,7 @@ token = "MTQ5MTc0Nzg3Nzc5MjM4NzIwMw.fake.fake"
     }))).toEqual([
       {
         projectName: 'agora-codex',
+        runtimeFlavor: 'codex',
         baseUrl: 'http://127.0.0.1:9820',
         token: 'default-secret',
         bridgeBaseUrl: 'http://127.0.0.1:9810/bridge/ws',
@@ -100,6 +102,7 @@ token = "MTQ5MTc0Nzg3Nzc5MjM4NzIwMw.fake.fake"
       },
       {
         projectName: 'agora-codex-immediate',
+        runtimeFlavor: 'codex',
         baseUrl: 'http://127.0.0.1:9821',
         token: 'immediate-secret',
         bridgeBaseUrl: 'http://127.0.0.1:9811/bridge/ws',
@@ -107,6 +110,29 @@ token = "MTQ5MTc0Nzg3Nzc5MjM4NzIwMw.fake.fake"
         discordBotUserIds: ['1491781344664227942'],
       },
     ]);
+  });
+
+  it('normalizes Claude Code agent types into runtime flavors', () => {
+    const targets = loadCcConnectProjectTargets({
+      env: { AGORA_CC_CONNECT_CONFIG_PATHS: '/tmp/cc-connect.toml' },
+      exists: () => true,
+      readFile: () => `
+[[projects]]
+name = "agora-claude"
+
+[projects.agent]
+type = "claude"
+
+[projects.agent.options]
+work_dir = "/repo/agora"
+`,
+    });
+
+    expect(targets[0]).toMatchObject({
+      projectName: 'agora-claude',
+      agentType: 'claude',
+      runtimeFlavor: 'claude-code',
+    });
   });
 
   it('builds Discord native mention aliases for cc-connect projects', () => {

@@ -57,9 +57,12 @@ import {
   type PresenceSource,
 } from '@agora-ts/core';
 import {
+  buildCcConnectDiscordParticipantUserIds,
   CcConnectAgentRegistry,
+  CcConnectBridgeRuntimeService,
   CcConnectManagementPresenceSource,
   CcConnectSessionMirrorService,
+  loadCcConnectProjectTargets,
 } from '@agora-ts/adapters-cc-connect';
 import { FilesystemContextSourceRetrievalAdapter, FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter } from '@agora-ts/adapters-brain';
 import { ProjectContextBriefingMaterializer, RuntimeRepoShimMaterializer } from '@agora-ts/adapters-materialization';
@@ -191,6 +194,7 @@ export interface ServerCompositionFactories {
       contextMaterializationService: ContextMaterializationService;
       projectService: ProjectService;
       agentRuntimePort: AgentRuntimePort;
+      runtimeThreadMessageRouter?: RuntimeThreadMessageRouter;
       craftsmanInputPort: CraftsmanInputPort;
       craftsmanExecutionProbePort: CraftsmanExecutionProbePort;
       craftsmanExecutionTailPort: CraftsmanExecutionTailPort;
@@ -463,6 +467,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         },
         projectService: deps.projectService,
         agentRuntimePort: deps.agentRuntimePort,
+        ...(deps.runtimeThreadMessageRouter ? { runtimeThreadMessageRouter: deps.runtimeThreadMessageRouter } : {}),
         runtimeRecoveryPort: deps.runtimeRecoveryPort,
         craftsmanInputPort: deps.craftsmanInputPort,
         craftsmanExecutionProbePort: deps.craftsmanExecutionProbePort,
@@ -556,11 +561,13 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
             ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
             : {},
         );
+        const ccConnectParticipantUserIds = buildCcConnectDiscordParticipantUserIds(loadCcConnectProjectTargets());
         const primaryAccountId = Object.entries(accountTokens).find(([, token]) => token === im.discord?.bot_token)?.[0] ?? null;
         return new DiscordIMProvisioningAdapter({
           botToken: im.discord.bot_token,
           defaultChannelId: im.discord.default_channel_id,
           participantTokens: accountTokens,
+          participantUserIds: ccConnectParticipantUserIds,
           primaryAccountId,
         });
       }
@@ -701,7 +708,18 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     },
     createDiscordThreadIngressService: () => undefined,
     createCcConnectSessionMirrorService: () => undefined,
-    createCcConnectBridgeRuntimeService: () => undefined,
+    createCcConnectBridgeRuntimeService: (_context, deps) => {
+      if (!deps.imProvisioningPort) {
+        return undefined;
+      }
+      return new CcConnectBridgeRuntimeService({
+        imProvisioningPort: deps.imProvisioningPort,
+        taskConversationService: deps.taskConversationService,
+        taskContextBindingService: deps.taskContextBindingService,
+        taskParticipationService: deps.taskParticipationService,
+        liveSessionStore: deps.liveSessionStore,
+      });
+    },
   };
 }
 
@@ -751,6 +769,17 @@ export function buildServerComposition(
   const humanAccountService = factories.createHumanAccountService(context);
   const imProvisioningPort = factories.createIMProvisioningPort(context);
   const messagingPort = factories.createIMMessagingPort(context);
+  const taskConversationService = factories.createTaskConversationService(context);
+  const ccConnectBridgeRuntimeService = factories.createCcConnectBridgeRuntimeService?.(context, {
+    imProvisioningPort,
+    taskConversationService,
+    taskContextBindingService,
+    taskParticipationService,
+    liveSessionStore,
+  });
+  const runtimeThreadMessageRouter = new RuntimeThreadMessageRouter(
+    ccConnectBridgeRuntimeService ? [ccConnectBridgeRuntimeService] : [],
+  );
   const taskService = factories.createTaskService(context, {
     craftsmanDispatcher,
     legacyRuntimeService,
@@ -765,6 +794,7 @@ export function buildServerComposition(
     contextMaterializationService,
     projectService,
     agentRuntimePort,
+    runtimeThreadMessageRouter,
     ...createCraftsmanTransportDeps(craftsmanMode, legacyRuntimeService, acpRuntime),
   });
   const projectContextDeliveryService = factories.createProjectContextDeliveryService(context, {
@@ -789,17 +819,6 @@ export function buildServerComposition(
   const templateAuthoringService = factories.createTemplateAuthoringService(context);
   const inboxService = factories.createInboxService(context, { taskService });
   const notificationDispatcher = factories.createNotificationDispatcher(context, { messagingPort });
-  const taskConversationService = factories.createTaskConversationService(context);
-  const ccConnectBridgeRuntimeService = factories.createCcConnectBridgeRuntimeService?.(context, {
-    imProvisioningPort,
-    taskConversationService,
-    taskContextBindingService,
-    taskParticipationService,
-    liveSessionStore,
-  });
-  const runtimeThreadMessageRouter = new RuntimeThreadMessageRouter(
-    ccConnectBridgeRuntimeService ? [ccConnectBridgeRuntimeService] : [],
-  );
   const taskInboundService = factories.createTaskInboundService(context, {
     taskConversationService,
     taskContextBindingService,

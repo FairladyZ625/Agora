@@ -204,6 +204,18 @@ export class TaskStageSupport {
     this.taskBroadcastService.publishTaskStatusBroadcast(task, input);
   }
 
+  dispatchExternalBootstrapMessages(
+    taskId: string,
+    binding: {
+      conversation_ref?: string | null;
+      thread_ref?: string | null;
+      im_provider: string;
+    },
+    messages: IMPublishMessageInput[],
+  ) {
+    this.taskBroadcastService.dispatchExternalBootstrapMessages(taskId, binding, messages);
+  }
+
   buildSmokeStageEntryCommands(task: TaskRecord, stage: WorkflowStageLike): string[] {
     if (task.control?.mode !== 'smoke_test') {
       return [];

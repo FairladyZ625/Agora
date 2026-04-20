@@ -15,6 +15,7 @@ const originalEnv = {
   AGORA_SKILL_TARGET_DIRS: process.env.AGORA_SKILL_TARGET_DIRS,
   AGORA_CRAFTSMAN_CLI_MODE: process.env.AGORA_CRAFTSMAN_CLI_MODE,
   AGORA_OPENCLAW_CONFIG_PATH: process.env.AGORA_OPENCLAW_CONFIG_PATH,
+  AGORA_CC_CONNECT_CONFIG_PATHS: process.env.AGORA_CC_CONNECT_CONFIG_PATHS,
   AGORA_DB_PATH: process.env.AGORA_DB_PATH,
   AGORA_CONFIG_PATH: process.env.AGORA_CONFIG_PATH,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
@@ -51,6 +52,7 @@ afterEach(() => {
   restoreEnv('AGORA_SKILL_TARGET_DIRS');
   restoreEnv('AGORA_CRAFTSMAN_CLI_MODE');
   restoreEnv('AGORA_OPENCLAW_CONFIG_PATH');
+  restoreEnv('AGORA_CC_CONNECT_CONFIG_PATHS');
   restoreEnv('AGORA_DB_PATH');
   restoreEnv('AGORA_CONFIG_PATH');
   restoreEnv('OPENAI_API_KEY');
@@ -306,8 +308,10 @@ describe('cli composition', () => {
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
     const openClawConfigPath = join(dir, 'openclaw.json');
+    const ccConnectConfigPath = join(dir, 'cc-connect.toml');
     process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     process.env.AGORA_OPENCLAW_CONFIG_PATH = openClawConfigPath;
+    process.env.AGORA_CC_CONNECT_CONFIG_PATHS = ccConnectConfigPath;
     writeFileSync(openClawConfigPath, JSON.stringify({
       channels: {
         discord: {
@@ -318,6 +322,19 @@ describe('cli composition', () => {
         },
       },
     }));
+    writeFileSync(ccConnectConfigPath, `
+[[projects]]
+name = "agora-codex"
+
+[projects.agent]
+type = "codex"
+
+[[projects.platforms]]
+type = "discord"
+
+[projects.platforms.options]
+token = "MTQ5MTc4MTM0NDY2NDIyNzk0Mg.fake.fake"
+`);
     writeFileSync(configPath, JSON.stringify({
       db_path: dbPath,
       im: {
@@ -337,6 +354,9 @@ describe('cli composition', () => {
       main: 'discord-bot-token',
       reviewer: 'reviewer-token',
     });
+    expect(Reflect.get(provisioningPort as object, 'participantUserIds')).toEqual(new Map([
+      ['cc-connect:agora-codex', '1491781344664227942'],
+    ]));
     expect(Reflect.get(provisioningPort as object, 'primaryAccountId')).toBe('main');
     composition.db.close();
   });

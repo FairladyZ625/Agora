@@ -43,6 +43,7 @@ export interface CcConnectProjectTarget {
   configPath: string;
   projectName: string;
   agentType: string | null;
+  runtimeFlavor: string | null;
   workDir: string | null;
   primaryModel: string | null;
   channelProviders: string[];
@@ -267,6 +268,7 @@ function parseCcConnectConfig(raw: string, configPath: string): CcConnectProject
       configPath,
       projectName: project.name as string,
       agentType: project.agentType,
+      runtimeFlavor: normalizeRuntimeFlavor(project.agentType),
       workDir: project.workDir,
       primaryModel: project.primaryModel,
       channelProviders: Array.from(project.channelProviders).sort(),
@@ -285,6 +287,20 @@ function parseCcConnectConfig(raw: string, configPath: string): CcConnectProject
         path: bridgePath,
       },
     }));
+}
+
+function normalizeRuntimeFlavor(agentType: string | null) {
+  const normalized = agentType?.trim().toLowerCase().replace(/_/g, '-') ?? null;
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === 'codex') {
+    return 'codex';
+  }
+  if (normalized === 'claude' || normalized === 'claude-code') {
+    return 'claude-code';
+  }
+  return normalized;
 }
 
 function decodeDiscordTokenUserId(token: string): string | null {

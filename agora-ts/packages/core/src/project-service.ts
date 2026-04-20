@@ -32,6 +32,19 @@ export interface ProjectImSpaceBinding {
   managed_by?: string | null;
 }
 
+export interface ProjectRuntimeTargetResolutionInput {
+  role?: string | null;
+  runtime_flavor?: string | null;
+  model_preference?: string | null;
+}
+
+export interface ProjectRuntimeTargetResolution {
+  target_ref: string;
+  runtime_flavor: string | null;
+  selected_by: 'project_flavor_default' | 'project_purpose_default' | 'project_default';
+  selected_reason: string;
+}
+
 export interface ProjectServiceOptions {
   projectRepository: IProjectRepository;
   taskRepository: ITaskRepository;
@@ -125,6 +138,14 @@ export class ProjectService {
       return nomos.active_root;
     }
     return null;
+  }
+
+  resolveProjectRuntimeTarget(
+    projectId: string,
+    input: ProjectRuntimeTargetResolutionInput = {},
+  ): ProjectRuntimeTargetResolution | null {
+    const project = this.requireProject(projectId);
+    return resolveProjectRuntimeTargetFromMetadata(project.metadata, input);
   }
 
   listProjectMemberships(projectId: string) {
@@ -353,6 +374,85 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
+}
+
+function resolveProjectRuntimeTargetFromMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+  input: ProjectRuntimeTargetResolutionInput,
+): ProjectRuntimeTargetResolution | null {
+  const root = asRecord(metadata);
+  const runtimeTargets = asRecord(root?.runtime_targets) ?? asRecord(asRecord(root?.agora)?.runtime_targets);
+  if (!runtimeTargets) {
+    return null;
+  }
+
+  const explicitFlavor = normalizeRuntimeFlavor(input.runtime_flavor ?? input.model_preference ?? null);
+  const flavor = explicitFlavor ?? resolveRoleRuntimePolicyFlavor(root, input.role ?? null);
+  const flavors = asRecord(runtimeTargets.flavors);
+  if (flavor && typeof flavors?.[flavor] === 'string' && flavors[flavor].length > 0) {
+    return {
+      target_ref: flavors[flavor],
+      runtime_flavor: flavor,
+      selected_by: 'project_flavor_default',
+      selected_reason: `project runtime_targets.flavors.${flavor}`,
+    };
+  }
+
+  const purposeDefaultKey = resolveRuntimePurposeDefaultKey(input.role ?? null);
+  const purposeDefault = typeof runtimeTargets[purposeDefaultKey] === 'string'
+    ? runtimeTargets[purposeDefaultKey]
+    : null;
+  if (purposeDefault && purposeDefault.length > 0) {
+    return {
+      target_ref: purposeDefault,
+      runtime_flavor: flavor,
+      selected_by: 'project_purpose_default',
+      selected_reason: `project runtime_targets.${purposeDefaultKey}`,
+    };
+  }
+
+  const defaultTarget = typeof runtimeTargets.default === 'string' ? runtimeTargets.default : null;
+  if (defaultTarget && defaultTarget.length > 0) {
+    return {
+      target_ref: defaultTarget,
+      runtime_flavor: flavor,
+      selected_by: 'project_default',
+      selected_reason: 'project runtime_targets.default',
+    };
+  }
+
+  return null;
+}
+
+function resolveRoleRuntimePolicyFlavor(metadata: Record<string, unknown> | null, role: string | null) {
+  if (!metadata || !role) {
+    return null;
+  }
+  const policy = asRecord(metadata.role_runtime_policy) ?? asRecord(asRecord(metadata.agora)?.role_runtime_policy);
+  const rolePolicy = asRecord(policy?.[role]);
+  const preferredFlavor = typeof rolePolicy?.preferred_flavor === 'string' ? rolePolicy.preferred_flavor : null;
+  return normalizeRuntimeFlavor(preferredFlavor);
+}
+
+function normalizeRuntimeFlavor(value: string | null) {
+  const normalized = value?.trim().toLowerCase().replace(/_/g, '-') ?? null;
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === 'codex') {
+    return 'codex';
+  }
+  if (normalized === 'claude' || normalized === 'claude-code') {
+    return 'claude-code';
+  }
+  return null;
+}
+
+function resolveRuntimePurposeDefaultKey(role: string | null) {
+  if (role === 'reviewer' || role === 'architect') {
+    return 'default_review';
+  }
+  return 'default_coding';
 }
 
 function extractProjectImSpace(project: ProjectRecord, provider: string): ProjectImSpaceBinding | null {

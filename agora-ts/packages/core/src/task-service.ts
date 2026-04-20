@@ -242,6 +242,7 @@ export class TaskService {
       contextMaterializationService: this.contextMaterializationService,
       projectBrainAutomationService: this.projectBrainAutomationService,
       agentRuntimePort: this.agentRuntimePort,
+      runtimeThreadMessageRouter: options.runtimeThreadMessageRouter,
       runtimeRecoveryPort: this.runtimeRecoveryPort,
       craftsmanExecutionProbePort: this.craftsmanExecutionProbePort,
       craftsmanExecutionTailPort: this.craftsmanExecutionTailPort,
@@ -331,13 +332,22 @@ export class TaskService {
         await this.taskParticipantSyncService.joinProvisionedParticipants(taskId, binding, imParticipantRefs);
         const bootstrapMessages = this.taskLifecycleSupport.buildBootstrapMessages(createdTask, brainWorkspace, imParticipantRefs);
         if (bootstrapMessages.length > 0) {
-          await provisioningPort.publishMessages({
-            binding_id: binding.id,
-            ...(binding.conversation_ref ? { conversation_ref: binding.conversation_ref } : {}),
-            ...(binding.thread_ref ? { thread_ref: binding.thread_ref } : {}),
-            messages: bootstrapMessages,
-          });
-          this.taskStageSupport.mirrorPublishedMessagesToConversation(taskId, binding, bootstrapMessages);
+          let publishedToIm = false;
+          try {
+            await provisioningPort.publishMessages({
+              binding_id: binding.id,
+              ...(binding.conversation_ref ? { conversation_ref: binding.conversation_ref } : {}),
+              ...(binding.thread_ref ? { thread_ref: binding.thread_ref } : {}),
+              messages: bootstrapMessages,
+            });
+            publishedToIm = true;
+          } catch (error: unknown) {
+            console.error(`[TaskService] IM bootstrap publish failed for task ${taskId}:`, error);
+          }
+          if (publishedToIm) {
+            this.taskStageSupport.mirrorPublishedMessagesToConversation(taskId, binding, bootstrapMessages);
+          }
+          this.taskStageSupport.dispatchExternalBootstrapMessages(taskId, binding, bootstrapMessages);
         }
       }).catch((err: unknown) => {
         console.error(`[TaskService] IM provisioning failed for task ${taskId}:`, err);

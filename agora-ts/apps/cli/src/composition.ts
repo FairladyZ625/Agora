@@ -101,7 +101,11 @@ import {
 } from '@agora-ts/core';
 import { FilesystemContextSourceRetrievalAdapter, FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter, OpenAiCompatibleProjectBrainEmbeddingAdapter, QdrantProjectBrainVectorIndexAdapter } from '@agora-ts/adapters-brain';
 import { ProjectContextBriefingMaterializer, RuntimeRepoShimMaterializer } from '@agora-ts/adapters-materialization';
-import { CcConnectAgentRegistry } from '@agora-ts/adapters-cc-connect';
+import {
+  buildCcConnectDiscordParticipantUserIds,
+  CcConnectAgentRegistry,
+  loadCcConnectProjectTargets,
+} from '@agora-ts/adapters-cc-connect';
 import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
 import { OsHostResourcePort } from '@agora-ts/adapters-host';
 import { AcpCraftsmanInputPort, AcpCraftsmanProbePort, AcpCraftsmanTailPort, AcpRuntimeRecoveryPort, createDefaultCraftsmanAdapters, DirectAcpxRuntimePort, TmuxCraftsmanInputPort, TmuxCraftsmanProbePort, TmuxCraftsmanTailPort, TmuxRuntimeRecoveryPort, TmuxRuntimeService } from '@agora-ts/adapters-runtime';
@@ -321,11 +325,13 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
             ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
             : {},
         );
+        const ccConnectParticipantUserIds = buildCcConnectDiscordParticipantUserIds(loadCcConnectProjectTargets());
         const primaryAccountId = Object.entries(accountTokens).find(([, token]) => token === im.discord?.bot_token)?.[0] ?? null;
         return new DiscordIMProvisioningAdapter({
           botToken: im.discord.bot_token,
           defaultChannelId: im.discord.default_channel_id,
           participantTokens: accountTokens,
+          participantUserIds: ccConnectParticipantUserIds,
           primaryAccountId,
         });
       }

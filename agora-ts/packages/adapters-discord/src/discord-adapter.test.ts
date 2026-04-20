@@ -569,6 +569,47 @@ describe('DiscordIMProvisioningAdapter', () => {
     vi.unstubAllGlobals();
   });
 
+  it('joinParticipant resolves configured participant user ids without a participant token', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, text: async () => '' })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ([{ user_id: '1491781344664227942' }]),
+      });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+      participantUserIds: {
+        'cc-connect:project-a-codex': '1491781344664227942',
+      },
+    });
+
+    const result = await adapter.joinParticipant({
+      binding_id: 'bind-target-user-1',
+      participant_ref: 'cc-connect:project-a-codex',
+      thread_ref: 'thread-target-user',
+    });
+
+    expect(result).toEqual({ status: 'joined', detail: null });
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      1,
+      'https://discord.com/api/v10/channels/thread-target-user/thread-members/1491781344664227942',
+      expect.objectContaining({
+        method: 'PUT',
+        headers: expect.objectContaining({ Authorization: 'Bot main-token' }),
+      }),
+    );
+    expect(mockFetch).not.toHaveBeenCalledWith(
+      'https://discord.com/api/v10/users/@me',
+      expect.anything(),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
   it('joinParticipant treats member-list verification failures as joined with detail', async () => {
     const mockFetch = vi
       .fn()
@@ -931,6 +972,49 @@ describe('DiscordIMProvisioningAdapter', () => {
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, { body: string }])[1].body) as { content: string };
     expect(body.content).toContain('<@1475474563445035048>');
     expect(body.content).toContain('Wake <@1475474563445035048>');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('publishMessages resolves configured participant user ids without lookup requests', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+      participantUserIds: {
+        'cc-connect:project-a-codex': '1491781344664227942',
+      },
+    });
+
+    await adapter.publishMessages({
+      binding_id: 'bind-bootstrap-target-user-1',
+      thread_ref: 'thread-bootstrap-target-user',
+      messages: [
+        {
+          kind: 'role_brief',
+          participant_refs: ['cc-connect:project-a-codex'],
+          body: 'Wake {{participant:cc-connect:project-a-codex}}',
+        },
+      ],
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      1,
+      'https://discord.com/api/v10/channels/thread-bootstrap-target-user/messages',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, { body: string }])[1].body) as { content: string };
+    expect(body.content).toContain('<@1491781344664227942>');
+    expect(body.content).toContain('Wake <@1491781344664227942>');
+    expect(mockFetch).not.toHaveBeenCalledWith(
+      'https://discord.com/api/v10/users/@me',
+      expect.anything(),
+    );
 
     vi.unstubAllGlobals();
   });

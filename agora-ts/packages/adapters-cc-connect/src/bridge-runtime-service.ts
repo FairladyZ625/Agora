@@ -141,6 +141,9 @@ export class CcConnectBridgeRuntimeService implements RuntimeThreadMessagePort {
       last_event_at: observedAt,
       metadata: {
         project: connection.target.projectName,
+        ...(connection.target.runtimeFlavor ? { runtime_flavor: connection.target.runtimeFlavor } : {}),
+        runtime_target_ref: connection.agentRef,
+        ...(connection.target.workDir ? { work_dir: connection.target.workDir } : {}),
       },
     });
 

@@ -366,6 +366,15 @@ export class DashboardQueryService {
       current.primary_model = item.primary_model;
       current.workspace_dir = item.workspace_dir;
       current.host_framework = current.host_framework ?? item.host_framework;
+      current.inventory_kind = current.inventory_kind ?? item.inventory_kind;
+      current.runtime_provider = current.runtime_provider ?? item.runtime_provider;
+      current.runtime_flavor = current.runtime_flavor ?? item.runtime_flavor;
+      current.runtime_target_ref = current.runtime_target_ref ?? item.runtime_target_ref;
+      const discordBotUserIds = current.discord_bot_user_ids ?? [];
+      mergeUniqueMany(discordBotUserIds, item.discord_bot_user_ids ?? []);
+      if (discordBotUserIds.length > 0) {
+        current.discord_bot_user_ids = discordBotUserIds;
+      }
       mergeUniqueMany(current.channel_providers, item.channel_providers);
       mergeUniqueMany(current.inventory_sources, item.inventory_sources);
       agents.set(item.id, current);
@@ -419,6 +428,11 @@ export class DashboardQueryService {
           account_id: item.account_id ?? null,
           primary_model: item.primary_model ?? null,
           workspace_dir: item.workspace_dir ?? null,
+          ...(item.inventory_kind ? { inventory_kind: item.inventory_kind } : {}),
+          ...(item.runtime_provider !== undefined ? { runtime_provider: item.runtime_provider } : {}),
+          ...(item.runtime_flavor !== undefined ? { runtime_flavor: item.runtime_flavor } : {}),
+          ...(item.runtime_target_ref !== undefined ? { runtime_target_ref: item.runtime_target_ref } : {}),
+          ...((item.discord_bot_user_ids?.length ?? 0) > 0 ? { discord_bot_user_ids: item.discord_bot_user_ids } : {}),
         };
         const selectability = deriveAgentSelectability(normalized);
         return {

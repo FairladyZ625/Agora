@@ -101,6 +101,8 @@ type = "discord"
       agent_ref: 'cc-connect:agora-codex',
       runtime_provider: 'cc-connect',
       runtime_actor_ref: 'cc-connect:agora-codex',
+      runtime_flavor: 'codex',
+      runtime_target_ref: 'cc-connect:agora-codex',
       agent_origin: 'user_managed',
     });
   });

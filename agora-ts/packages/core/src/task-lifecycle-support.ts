@@ -24,6 +24,7 @@ import type { TaskBroadcastService } from './task-broadcast-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
 import type { ContextMaterializationService } from './context-materialization-service.js';
 import type { ProjectBrainAutomationService } from './project-brain-automation-service.js';
+import type { ProjectService } from './project-service.js';
 import type { StageRosterService } from './stage-roster-service.js';
 import { resolveControllerRef } from './team-member-kind.js';
 
@@ -57,6 +58,7 @@ export interface TaskLifecycleSupportOptions {
   taskParticipationService: TaskParticipationService | undefined;
   contextMaterializationService: Pick<ContextMaterializationService, 'materializeSync'> | undefined;
   projectBrainAutomationService: ProjectBrainAutomationService | undefined;
+  projectService: Pick<ProjectService, 'resolveProjectRuntimeTarget'> | undefined;
   skillCatalogPort: SkillCatalogPort | undefined;
 }
 
@@ -71,6 +73,7 @@ export class TaskLifecycleSupport {
   private readonly taskParticipationService: TaskParticipationService | undefined;
   private readonly contextMaterializationService: Pick<ContextMaterializationService, 'materializeSync'> | undefined;
   private readonly projectBrainAutomationService: ProjectBrainAutomationService | undefined;
+  private readonly projectService: Pick<ProjectService, 'resolveProjectRuntimeTarget'> | undefined;
   private readonly skillCatalogPort: SkillCatalogPort | undefined;
 
   constructor(options: TaskLifecycleSupportOptions) {
@@ -84,6 +87,7 @@ export class TaskLifecycleSupport {
     this.taskParticipationService = options.taskParticipationService;
     this.contextMaterializationService = options.contextMaterializationService;
     this.projectBrainAutomationService = options.projectBrainAutomationService;
+    this.projectService = options.projectService;
     this.skillCatalogPort = options.skillCatalogPort;
   }
 
@@ -110,10 +114,11 @@ export class TaskLifecycleSupport {
     return { members };
   }
 
-  enrichTeam(team: TaskRecord['team']): TaskRecord['team'] {
+  enrichTeam(team: TaskRecord['team'], input: { projectId?: string | null } = {}): TaskRecord['team'] {
     return {
       members: team.members.map((member) => {
-        const resolved = this.agentRuntimePort?.resolveAgent(member.agentId);
+        const agentId = this.resolveProjectRuntimeTargetAgentId(member, input.projectId) ?? member.agentId;
+        const resolved = this.agentRuntimePort?.resolveAgent(agentId);
         const agentOrigin: 'agora_managed' | 'user_managed' = member.agent_origin
           ?? resolved?.agent_origin
           ?? 'user_managed';
@@ -122,11 +127,22 @@ export class TaskLifecycleSupport {
           ?? (agentOrigin === 'agora_managed' ? 'overlay_delta' : 'overlay_full');
         return {
           ...member,
+          agentId,
           agent_origin: agentOrigin,
           briefing_mode: briefingMode,
         };
       }),
     };
+  }
+
+  private resolveProjectRuntimeTargetAgentId(member: TaskRecord['team']['members'][number], projectId?: string | null) {
+    if (!projectId || !this.projectService || member.agentId !== member.role) {
+      return null;
+    }
+    return this.projectService.resolveProjectRuntimeTarget(projectId, {
+      role: member.role,
+      model_preference: member.model_preference,
+    })?.target_ref ?? null;
   }
 
   withControllerRef(task: TaskRecord): TaskRecord & {

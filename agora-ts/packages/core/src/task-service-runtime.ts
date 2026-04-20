@@ -36,6 +36,7 @@ import type { ProjectMembershipService } from './project-membership-service.js';
 import type { ProjectNomosAuthoringPort } from './project-nomos-authoring-port.js';
 import type { ProjectService } from './project-service.js';
 import type { RuntimeRecoveryPort } from './runtime-recovery-port.js';
+import type { RuntimeThreadMessageRouter } from './runtime-message-ports.js';
 import type { AgentRuntimePort } from './runtime-ports.js';
 import type { SkillCatalogPort } from './skill-catalog-port.js';
 import type { StateMachine } from './state-machine.js';
@@ -99,6 +100,7 @@ export interface TaskServiceRuntimeDeps {
   contextMaterializationService: Pick<ContextMaterializationService, 'materializeSync'> | undefined;
   projectBrainAutomationService: ProjectBrainAutomationService | undefined;
   agentRuntimePort: AgentRuntimePort | undefined;
+  runtimeThreadMessageRouter: RuntimeThreadMessageRouter | undefined;
   runtimeRecoveryPort: RuntimeRecoveryPort | undefined;
   craftsmanExecutionProbePort: CraftsmanExecutionProbePort | undefined;
   craftsmanExecutionTailPort: CraftsmanExecutionTailPort | undefined;
@@ -137,6 +139,8 @@ export function buildTaskServiceRuntime(deps: TaskServiceRuntimeDeps): TaskServi
     taskConversationRepository: deps.taskConversationRepository,
     imProvisioningPort: deps.imProvisioningPort,
     getTaskBrainWorkspacePath: (taskId) => deps.taskBrainBindingService?.getActiveBinding(taskId)?.workspace_path ?? null,
+    taskParticipationService: deps.taskParticipationService,
+    runtimeThreadMessageRouter: deps.runtimeThreadMessageRouter,
     trackBackgroundOperation: deps.trackBackgroundOperation,
   });
   const taskParticipantSyncService = new TaskParticipantSyncService({
@@ -157,6 +161,7 @@ export function buildTaskServiceRuntime(deps: TaskServiceRuntimeDeps): TaskServi
     taskParticipationService: deps.taskParticipationService,
     contextMaterializationService: deps.contextMaterializationService,
     projectBrainAutomationService: deps.projectBrainAutomationService,
+    projectService: deps.projectService,
     skillCatalogPort: deps.skillCatalogPort,
   });
   const taskCoreSupport = new TaskCoreSupport({
@@ -250,7 +255,7 @@ export function buildTaskServiceRuntime(deps: TaskServiceRuntimeDeps): TaskServi
     tryLoadTemplate: (taskType) => taskLifecycleSupport.tryLoadTemplate(taskType),
     buildWorkflow: (template) => taskLifecycleSupport.buildWorkflow(template),
     buildTeam: (template) => taskLifecycleSupport.buildTeam(template),
-    enrichTeam: (team) => taskLifecycleSupport.enrichTeam(team),
+    enrichTeam: (team, input) => taskLifecycleSupport.enrichTeam(team, input),
     taskIdGenerator: deps.taskIdGenerator,
     validateProjectBinding: ({ projectId, creator, authority }) => {
       deps.projectService.requireProject(projectId);

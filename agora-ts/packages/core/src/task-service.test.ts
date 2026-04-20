@@ -26,11 +26,19 @@ import { ProjectBrainAutomationService } from './project-brain-automation-servic
 import { ProjectBrainService } from './project-brain-service.js';
 import { ProjectContextWriter } from './project-context-writer.js';
 import type { RuntimeRecoveryPort } from './runtime-recovery-port.js';
+import { RuntimeThreadMessageRouter } from './runtime-message-ports.js';
 import { StubIMProvisioningPort } from './im-ports.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
 type TaskServiceBuilderOptions = NonNullable<Parameters<typeof createTaskServiceFromDb>[1]>;
+
+class FailingBootstrapPublishPort extends StubIMProvisioningPort {
+  async publishMessages(input: Parameters<StubIMProvisioningPort['publishMessages']>[0]): Promise<void> {
+    this.published.push(input);
+    throw new Error('discord publish unavailable');
+  }
+}
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-task-service-'));
@@ -624,6 +632,258 @@ describe('task service', () => {
         { from: 'review', to: 'draft', kind: 'reject' },
       ],
     });
+  });
+
+  it('resolves role placeholder members to project default runtime targets', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projectService = createProjectServiceFromDb(db);
+    projectService.createProject({
+      id: 'proj-runtime-targets',
+      name: 'Runtime Targets',
+      metadata: {
+        runtime_targets: {
+          default_coding: 'cc-connect:project-a-codex',
+          flavors: {
+            codex: 'cc-connect:project-a-codex',
+          },
+        },
+      },
+    });
+    const service = createTaskServiceFromDb(db, {
+      templatesDir,
+      projectService,
+      taskIdGenerator: () => 'OC-PROJECT-RUNTIME-TARGET-1',
+      agentRuntimePort: {
+        resolveAgent(agentRef) {
+          if (agentRef === 'cc-connect:project-a-codex') {
+            return {
+              agent_ref: agentRef,
+              runtime_provider: 'cc-connect',
+              runtime_actor_ref: agentRef,
+              runtime_flavor: 'codex',
+              runtime_target_ref: agentRef,
+              agent_origin: 'user_managed',
+            };
+          }
+          return null;
+        },
+      },
+    });
+
+    const task = service.createTask({
+      title: 'Project default runtime target',
+      type: 'custom',
+      creator: 'archon',
+      description: 'resolve project default target',
+      priority: 'normal',
+      project_id: 'proj-runtime-targets',
+      team_override: {
+        members: [
+          {
+            role: 'developer',
+            agentId: 'developer',
+            member_kind: 'citizen',
+            model_preference: 'codex',
+          },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'build',
+            mode: 'execute',
+            execution_kind: 'citizen_execute',
+            roster: { include_roles: ['developer'] },
+            gate: { type: 'command' },
+          },
+        ],
+      },
+    });
+
+    expect(task.team.members[0]).toMatchObject({
+      role: 'developer',
+      agentId: 'cc-connect:project-a-codex',
+      agent_origin: 'user_managed',
+      briefing_mode: 'overlay_full',
+    });
+    expect(service.getTaskStatus(task.id).task.team.members[0]?.agentId).toBe('cc-connect:project-a-codex');
+  });
+
+  it('does not override explicit project task agent refs with project default runtime targets', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projectService = createProjectServiceFromDb(db);
+    projectService.createProject({
+      id: 'proj-explicit-targets',
+      name: 'Explicit Targets',
+      metadata: {
+        runtime_targets: {
+          default_coding: 'cc-connect:project-a-codex',
+        },
+      },
+    });
+    const service = createTaskServiceFromDb(db, {
+      templatesDir,
+      projectService,
+      taskIdGenerator: () => 'OC-PROJECT-RUNTIME-TARGET-2',
+    });
+
+    const task = service.createTask({
+      title: 'Explicit target',
+      type: 'custom',
+      creator: 'archon',
+      description: 'keep explicit target',
+      priority: 'normal',
+      project_id: 'proj-explicit-targets',
+      team_override: {
+        members: [
+          {
+            role: 'developer',
+            agentId: 'cc-connect:explicit-codex',
+            member_kind: 'citizen',
+            model_preference: 'codex',
+          },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'build',
+            mode: 'execute',
+            execution_kind: 'citizen_execute',
+            roster: { include_roles: ['developer'] },
+            gate: { type: 'command' },
+          },
+        ],
+      },
+    });
+
+    expect(task.team.members[0]?.agentId).toBe('cc-connect:explicit-codex');
+  });
+
+  it('uses project role runtime policy to choose a runtime flavor target', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projectService = createProjectServiceFromDb(db);
+    projectService.createProject({
+      id: 'proj-role-runtime-policy',
+      name: 'Role Runtime Policy',
+      metadata: {
+        runtime_targets: {
+          flavors: {
+            codex: 'cc-connect:project-a-codex',
+            'claude-code': 'cc-connect:project-a-claude',
+          },
+        },
+        role_runtime_policy: {
+          reviewer: {
+            preferred_flavor: 'claude-code',
+          },
+        },
+      },
+    });
+    const service = createTaskServiceFromDb(db, {
+      templatesDir,
+      projectService,
+      taskIdGenerator: () => 'OC-PROJECT-RUNTIME-POLICY-1',
+    });
+
+    const task = service.createTask({
+      title: 'Role policy target',
+      type: 'custom',
+      creator: 'archon',
+      description: 'resolve reviewer by role runtime policy',
+      priority: 'normal',
+      project_id: 'proj-role-runtime-policy',
+      team_override: {
+        members: [
+          {
+            role: 'reviewer',
+            agentId: 'reviewer',
+            member_kind: 'citizen',
+            model_preference: '',
+          },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'review',
+            mode: 'discuss',
+            execution_kind: 'citizen_discuss',
+            roster: { include_roles: ['reviewer'] },
+            gate: { type: 'command' },
+          },
+        ],
+      },
+    });
+
+    expect(task.team.members[0]?.agentId).toBe('cc-connect:project-a-claude');
+  });
+
+  it('lets explicit model preference override project role runtime policy flavor', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projectService = createProjectServiceFromDb(db);
+    projectService.createProject({
+      id: 'proj-role-runtime-policy-explicit',
+      name: 'Role Runtime Policy Explicit',
+      metadata: {
+        runtime_targets: {
+          flavors: {
+            codex: 'cc-connect:project-a-codex',
+            'claude-code': 'cc-connect:project-a-claude',
+          },
+        },
+        role_runtime_policy: {
+          reviewer: {
+            preferred_flavor: 'claude-code',
+          },
+        },
+      },
+    });
+    const service = createTaskServiceFromDb(db, {
+      templatesDir,
+      projectService,
+      taskIdGenerator: () => 'OC-PROJECT-RUNTIME-POLICY-2',
+    });
+
+    const task = service.createTask({
+      title: 'Role policy explicit target',
+      type: 'custom',
+      creator: 'archon',
+      description: 'resolve reviewer by explicit model preference',
+      priority: 'normal',
+      project_id: 'proj-role-runtime-policy-explicit',
+      team_override: {
+        members: [
+          {
+            role: 'reviewer',
+            agentId: 'reviewer',
+            member_kind: 'citizen',
+            model_preference: 'codex',
+          },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'review',
+            mode: 'discuss',
+            execution_kind: 'citizen_discuss',
+            roster: { include_roles: ['reviewer'] },
+            gate: { type: 'command' },
+          },
+        ],
+      },
+    });
+
+    expect(task.team.members[0]?.agentId).toBe('cc-connect:project-a-codex');
   });
 
   it('retains branch and complete edges in task blueprints for graph-backed workflows', () => {
@@ -3850,11 +4110,18 @@ describe('task service', () => {
       thread_ref: 'discord-thread-bootstrap-1',
     });
     const bindingService = createTaskContextBindingServiceFromDb(db);
+    const routed: Array<Record<string, unknown>> = [];
+    const runtimeThreadMessageRouter = new RuntimeThreadMessageRouter([{
+      runtime_provider: 'cc-connect',
+      sendInboundMessage: async (input) => {
+        routed.push(input);
+      },
+    }]);
     const runtimePort = {
       resolveAgent(agentRef: string) {
         return {
           agent_ref: agentRef,
-          runtime_provider: 'openclaw',
+          runtime_provider: agentRef === 'sonnet' ? 'cc-connect' : 'openclaw',
           runtime_actor_ref: agentRef,
           ...(agentRef === 'opus'
             ? {
@@ -3879,6 +4146,7 @@ describe('task service', () => {
       taskContextBindingService: bindingService,
       taskParticipationService: taskParticipation,
       agentRuntimePort: runtimePort,
+      runtimeThreadMessageRouter,
       taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-bootstrap-1',
       }),
@@ -4017,6 +4285,17 @@ describe('task service', () => {
     expect(sonnetBrief?.body).toContain('简报模式: overlay_full');
     expect(sonnetBrief?.body).toContain('阅读角色文档:');
     expect(sonnetBrief?.body).toContain('refactoring-ui -> /tmp/skills/refactoring-ui/SKILL.md');
+    expect(routed).toEqual([
+      expect.objectContaining({
+        task_id: 'OC-BOOTSTRAP-1',
+        provider: 'discord',
+        thread_ref: 'discord-thread-bootstrap-1',
+        body: sonnetBrief?.body,
+        author_ref: 'agora-bot',
+        display_name: 'agora-bot',
+        agent_ref: 'sonnet',
+      }),
+    ]);
     const conversations = new TaskConversationRepository(db);
     const entries = conversations.listByTask('OC-BOOTSTRAP-1');
     expect(entries.map((entry) => entry.body)).toEqual(
@@ -4028,6 +4307,105 @@ describe('task service', () => {
         expect.stringContaining('角色简报 glm5'),
       ]),
     );
+  });
+
+  it('dispatches external bootstrap role briefs even when IM bootstrap publish fails', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new FailingBootstrapPublishPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-bootstrap-publish-failure',
+    });
+    const routed: Array<Record<string, unknown>> = [];
+    const runtimeThreadMessageRouter = new RuntimeThreadMessageRouter([{
+      runtime_provider: 'cc-connect',
+      sendInboundMessage: async (input) => {
+        routed.push(input);
+      },
+    }]);
+    const runtimePort = {
+      resolveAgent(agentRef: string) {
+        return {
+          agent_ref: agentRef,
+          runtime_provider: agentRef === 'sonnet' ? 'cc-connect' : 'openclaw',
+          runtime_actor_ref: agentRef,
+        };
+      },
+    };
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      const service = createTaskServiceFromDb(db, {
+        templatesDir,
+        taskIdGenerator: () => 'OC-BOOTSTRAP-PUBLISH-FAILURE',
+        imProvisioningPort: provisioningPort,
+        taskContextBindingService: createTaskContextBindingServiceFromDb(db),
+        taskParticipationService: createTaskParticipationServiceFromDb(db, {
+          participantIdGenerator: () => 'pb-bootstrap-publish-failure',
+          agentRuntimePort: runtimePort,
+        }),
+        agentRuntimePort: runtimePort,
+        runtimeThreadMessageRouter,
+      });
+
+      service.createTask({
+        title: 'Bootstrap Publish Failure',
+        type: 'coding',
+        creator: 'archon',
+        description: 'external runtime must still receive the role brief',
+        priority: 'normal',
+        team_override: {
+          members: [
+            { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'cc-connect' },
+          ],
+        },
+        workflow_override: {
+          type: 'custom',
+          stages: [
+            {
+              id: 'dispatch',
+              mode: 'execute',
+              execution_kind: 'citizen_execute',
+              allowed_actions: ['execute'],
+              roster: { include_roles: ['developer'] },
+              gate: { type: 'command' },
+            },
+          ],
+        },
+        im_target: {
+          provider: 'discord',
+          visibility: 'private',
+          participant_refs: ['sonnet'],
+        },
+      });
+
+      await service.drainBackgroundOperations();
+
+      const roleBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'sonnet');
+      expect(roleBrief?.body).toContain('external runtime must still receive the role brief');
+      expect(routed).toEqual([
+        expect.objectContaining({
+          task_id: 'OC-BOOTSTRAP-PUBLISH-FAILURE',
+          provider: 'discord',
+          thread_ref: 'discord-thread-bootstrap-publish-failure',
+          body: roleBrief?.body,
+          author_ref: 'agora-bot',
+          display_name: 'agora-bot',
+          agent_ref: 'sonnet',
+        }),
+      ]);
+      const entries = new TaskConversationRepository(db).listByTask('OC-BOOTSTRAP-PUBLISH-FAILURE');
+      expect(entries.map((entry) => entry.body)).not.toEqual(
+        expect.arrayContaining([expect.stringContaining('角色简报 sonnet')]),
+      );
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.stringContaining('[TaskService] IM bootstrap publish failed for task OC-BOOTSTRAP-PUBLISH-FAILURE:'),
+        expect.any(Error),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it('refreshes the skill catalog before rendering bootstrap skill paths', async () => {

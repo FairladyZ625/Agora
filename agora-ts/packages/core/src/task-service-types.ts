@@ -36,6 +36,7 @@ import type { ProjectMembershipService } from './project-membership-service.js';
 import type { ProjectNomosAuthoringPort } from './project-nomos-authoring-port.js';
 import type { ProjectService } from './project-service.js';
 import type { RuntimeRecoveryPort } from './runtime-recovery-port.js';
+import type { RuntimeThreadMessageRouter } from './runtime-message-ports.js';
 import type { AgentRuntimePort } from './runtime-ports.js';
 import type { SkillCatalogPort } from './skill-catalog-port.js';
 import type { TaskAuthorityService } from './task-authority-service.js';
@@ -89,6 +90,7 @@ export interface TaskServiceOptions {
   contextMaterializationService?: Pick<ContextMaterializationService, 'materializeSync'>;
   projectBrainAutomationService?: ProjectBrainAutomationService;
   agentRuntimePort?: AgentRuntimePort;
+  runtimeThreadMessageRouter?: RuntimeThreadMessageRouter;
   runtimeRecoveryPort?: RuntimeRecoveryPort;
   craftsmanInputPort?: CraftsmanInputPort;
   craftsmanExecutionProbePort?: CraftsmanExecutionProbePort;

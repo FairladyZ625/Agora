@@ -2027,6 +2027,82 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('proj-b\tclaudecode\ttelegram,slack\t5\theartbeat=true');
   });
 
+  it('prints cc-connect runtime target inventory from local config without leaking tokens', async () => {
+    const dir = makeTempDir('agora-ts-cli-cc-connect-targets-');
+    const configPath = join(dir, 'cc-connect.toml');
+    writeFileSync(configPath, `
+[management]
+enabled = true
+port = 9820
+token = "secret"
+
+[bridge]
+enabled = true
+port = 9810
+token = "bridge-secret"
+
+[[projects]]
+name = "agora-codex"
+
+[projects.agent]
+type = "codex"
+
+[projects.agent.options]
+work_dir = "/repo/agora"
+model = "gpt-5.4"
+
+[[projects.platforms]]
+type = "discord"
+
+[projects.platforms.options]
+token = "MTQ5MTc4MTM0NDY2NDIyNzk0Mg.fake.fake"
+`);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'external-bridge', 'cc-connect', 'targets',
+      '--config', configPath,
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(JSON.parse(stdout.value)).toEqual({
+      targets: [
+        {
+          agent_ref: 'cc-connect:agora-codex',
+          runtime_provider: 'cc-connect',
+          runtime_flavor: 'codex',
+          project_name: 'agora-codex',
+          agent_type: 'codex',
+          primary_model: 'gpt-5.4',
+          work_dir: '/repo/agora',
+          channel_providers: ['discord'],
+          discord_bot_user_ids: ['1491781344664227942'],
+          config_path: configPath,
+          management: {
+            enabled: true,
+            base_url: 'http://127.0.0.1:9820',
+            token_present: true,
+          },
+          bridge: {
+            enabled: true,
+            base_url: 'http://127.0.0.1:9810/bridge/ws',
+            path: '/bridge/ws',
+            token_present: true,
+          },
+        },
+      ],
+    });
+    expect(stdout.value).not.toContain('secret');
+    expect(stdout.value).not.toContain('bridge-secret');
+    expect(stdout.value).not.toContain('MTQ5MTc4MTM0NDY2NDIyNzk0Mg');
+  });
+
   it('prints cc-connect project detail through an injected management service', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();

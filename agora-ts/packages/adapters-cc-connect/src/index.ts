@@ -1,4 +1,4 @@
-export { CcConnectAgentRegistry, buildCcConnectAgentId } from './agent-registry.js';
+export { CcConnectAgentRegistry, buildCcConnectAgentId, buildCcConnectDiscordParticipantUserIds } from './agent-registry.js';
 export type { CcConnectAgentRegistryOptions } from './agent-registry.js';
 export { CcConnectManagementPresenceSource } from './presence.js';
 export type { CcConnectManagementPresenceSourceOptions } from './presence.js';
@@ -13,6 +13,8 @@ export type {
   CcConnectBridgeEvent,
   CcConnectBridgeMessageInput,
 } from './cc-connect-bridge-client.js';
+export { CcConnectBridgeRuntimeService } from './bridge-runtime-service.js';
+export type { CcConnectBridgeRuntimeServiceOptions } from './bridge-runtime-service.js';
 export { CcConnectAgoraContextDeliveryClient } from './agora-context-delivery-client.js';
 export type {
   CcConnectAgoraApiInput,

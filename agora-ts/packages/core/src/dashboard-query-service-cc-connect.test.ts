@@ -52,6 +52,21 @@ describe('dashboard query service cc-connect live session projection', () => {
       progressLogRepository: new ProgressLogRepository(db),
       templateRepository: new TemplateRepository(db),
       liveSessions,
+      agentRegistry: {
+        listAgents: () => [{
+          id: 'cc-connect:agora-codex',
+          inventory_kind: 'runtime_target',
+          host_framework: 'cc-connect',
+          runtime_provider: 'cc-connect',
+          runtime_flavor: 'codex',
+          runtime_target_ref: 'cc-connect:agora-codex',
+          channel_providers: ['discord'],
+          inventory_sources: ['cc-connect'],
+          primary_model: 'gpt-5.4',
+          workspace_dir: '/repo/agora',
+          discord_bot_user_ids: ['1491781344664227942'],
+        }],
+      },
     });
 
     liveSessions.upsert({
@@ -75,6 +90,13 @@ describe('dashboard query service cc-connect live session projection', () => {
         host_framework: 'cc-connect',
         inventory_sources: ['cc-connect'],
         channel_providers: ['discord'],
+        inventory_kind: 'runtime_target',
+        runtime_provider: 'cc-connect',
+        runtime_flavor: 'codex',
+        runtime_target_ref: 'cc-connect:agora-codex',
+        primary_model: 'gpt-5.4',
+        workspace_dir: '/repo/agora',
+        discord_bot_user_ids: ['1491781344664227942'],
         status: 'busy',
         presence: 'online',
       }),

@@ -68,6 +68,7 @@ import {
   isDeveloperRegressionEnabled,
 } from '@agora-ts/core';
 import { OpenAiCompatibleProjectBrainEmbeddingAdapter } from '@agora-ts/adapters-brain';
+import { buildCcConnectAgentId, loadCcConnectProjectTargets } from '@agora-ts/adapters-cc-connect';
 import { ProjectContextBriefingMaterializer, RuntimeRepoShimMaterializer, RuntimeRepoShimWritebackService } from '@agora-ts/adapters-materialization';
 import { ProjectBrainIndexJobRepository } from '@agora-ts/db';
 import { LiveRegressionActor } from '@agora-ts/testing';
@@ -4619,6 +4620,72 @@ export function createCliProgram(deps: CliDependencies = {}) {
       ...(options.token !== undefined ? { managementToken: options.token } : {}),
     };
   }
+
+  function buildCcConnectTargetView(target: ReturnType<typeof loadCcConnectProjectTargets>[number]) {
+    return {
+      agent_ref: buildCcConnectAgentId(target.projectName),
+      runtime_provider: 'cc-connect',
+      runtime_flavor: target.runtimeFlavor,
+      project_name: target.projectName,
+      agent_type: target.agentType,
+      primary_model: target.primaryModel,
+      work_dir: target.workDir,
+      channel_providers: target.channelProviders,
+      discord_bot_user_ids: target.discord?.bot_user_ids ?? [],
+      config_path: target.configPath,
+      management: {
+        enabled: target.management.enabled,
+        base_url: target.management.baseUrl,
+        token_present: Boolean(target.management.token),
+      },
+      bridge: {
+        enabled: target.bridge.enabled,
+        base_url: target.bridge.baseUrl,
+        path: target.bridge.path,
+        token_present: Boolean(target.bridge.token),
+      },
+    };
+  }
+
+  ccConnect
+    .command('targets')
+    .description('list locally configured cc-connect runtime targets')
+    .option('--config <path>', 'cc-connect config path')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      config?: string;
+      json?: boolean;
+    }) => {
+      const targets = loadCcConnectProjectTargets({
+        env: options.config
+          ? {
+              ...process.env,
+              AGORA_CC_CONNECT_CONFIG_PATHS: options.config,
+              AGORA_CC_CONNECT_CONFIG_PATH: undefined,
+            }
+          : process.env,
+      }).map(buildCcConnectTargetView);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ targets }, null, 2));
+        return;
+      }
+      if (targets.length === 0) {
+        writeLine(stdout, '没有检测到 cc-connect runtime targets');
+        return;
+      }
+      for (const item of targets) {
+        writeLine(stdout, [
+          item.agent_ref,
+          item.runtime_flavor ?? '-',
+          item.project_name,
+          item.work_dir ?? '-',
+          item.channel_providers.join(',') || '-',
+          item.discord_bot_user_ids.join(',') || '-',
+          `management=${item.management.enabled ? 'enabled' : 'disabled'}`,
+          `bridge=${item.bridge.enabled ? 'enabled' : 'disabled'}`,
+        ].join('\t'));
+      }
+    });
 
   ccConnect
     .command('projects')

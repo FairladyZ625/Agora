@@ -2,11 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { CcConnectBridgeRuntimeService } from './bridge-runtime-service.js';
 import type { CcConnectProjectTarget } from './config-targets.js';
 
-function buildTarget(): CcConnectProjectTarget {
+function buildTarget(overrides: Partial<CcConnectProjectTarget> = {}): CcConnectProjectTarget {
   return {
     configPath: '/Users/lizeyu/.cc-connect/config-immediate.toml',
     projectName: 'agora-codex-immediate',
     agentType: 'codex',
+    runtimeFlavor: 'codex',
     workDir: '/Users/lizeyu/Projects/Agora',
     primaryModel: 'gpt-5.4',
     channelProviders: ['discord'],
@@ -21,6 +22,7 @@ function buildTarget(): CcConnectProjectTarget {
       token: 'bridge-token',
       path: '/bridge/ws',
     },
+    ...overrides,
   };
 }
 
@@ -122,6 +124,9 @@ describe('CcConnectBridgeRuntimeService', () => {
       last_event_at: '2026-04-14T12:00:00.000Z',
       metadata: {
         project: 'agora-codex-immediate',
+        runtime_flavor: 'codex',
+        runtime_target_ref: 'cc-connect:agora-codex-immediate',
+        work_dir: '/Users/lizeyu/Projects/Agora',
       },
     });
     expect(sendMessage).toHaveBeenCalledWith({
@@ -139,5 +144,114 @@ describe('CcConnectBridgeRuntimeService', () => {
 
     service.stop();
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps same-thread cc-connect participants isolated by target flavor and participant session key', async () => {
+    const connect = vi.fn(async () => undefined);
+    const sendMessage = vi.fn(async () => undefined);
+    const ping = vi.fn(async () => undefined);
+    const close = vi.fn();
+    const onEvent = vi.fn(() => () => undefined);
+    const bindRuntimeSession = vi.fn(() => null);
+    const upsert = vi.fn();
+
+    const service = new CcConnectBridgeRuntimeService({
+      targets: [
+        buildTarget({
+          projectName: 'project-a-codex',
+          agentType: 'codex',
+          runtimeFlavor: 'codex',
+          workDir: '/Projects/A',
+        }),
+        buildTarget({
+          projectName: 'project-a-claude',
+          agentType: 'claude',
+          runtimeFlavor: 'claude-code',
+          workDir: '/Projects/A',
+        }),
+      ],
+      imProvisioningPort: { publishMessages: vi.fn(async () => undefined) },
+      taskConversationService: { ingest: vi.fn() },
+      taskContextBindingService: {
+        getBindingById: vi.fn(() => null),
+        getActiveBinding: vi.fn(() => null),
+      },
+      taskParticipationService: {
+        getParticipantById: vi.fn(() => null),
+        getRuntimeSessionByParticipant: vi.fn(() => null),
+        bindRuntimeSession,
+      },
+      liveSessionStore: { upsert },
+      createClient: () => ({
+        connect,
+        sendMessage,
+        ping,
+        close,
+        onEvent,
+      }),
+      now: () => new Date('2026-04-14T12:00:00.000Z'),
+      pingIntervalMs: null,
+    });
+
+    service.start();
+    await service.whenReady();
+
+    await service.sendInboundMessage({
+      task_id: 'OC-MULTI-THREAD-1',
+      provider: 'discord',
+      thread_ref: 'thread-shared',
+      conversation_ref: 'forum-1',
+      entry_id: 'entry-codex',
+      body: 'developer brief',
+      author_ref: 'agora-bot',
+      display_name: 'agora-bot',
+      participant_binding_id: 'participant-codex',
+      agent_ref: 'cc-connect:project-a-codex',
+    });
+    await service.sendInboundMessage({
+      task_id: 'OC-MULTI-THREAD-1',
+      provider: 'discord',
+      thread_ref: 'thread-shared',
+      conversation_ref: 'forum-1',
+      entry_id: 'entry-claude',
+      body: 'reviewer brief',
+      author_ref: 'agora-bot',
+      display_name: 'agora-bot',
+      participant_binding_id: 'participant-claude',
+      agent_ref: 'cc-connect:project-a-claude',
+    });
+
+    expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      session_key: 'agora-discord:thread-shared:participant-codex',
+      project: 'project-a-codex',
+      content: 'developer brief',
+    }));
+    expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      session_key: 'agora-discord:thread-shared:participant-claude',
+      project: 'project-a-claude',
+      content: 'reviewer brief',
+    }));
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+      agent_id: 'cc-connect:project-a-codex',
+      session_key: 'agora-discord:thread-shared:participant-codex',
+      metadata: {
+        project: 'project-a-codex',
+        runtime_flavor: 'codex',
+        runtime_target_ref: 'cc-connect:project-a-codex',
+        work_dir: '/Projects/A',
+      },
+    }));
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+      agent_id: 'cc-connect:project-a-claude',
+      session_key: 'agora-discord:thread-shared:participant-claude',
+      metadata: {
+        project: 'project-a-claude',
+        runtime_flavor: 'claude-code',
+        runtime_target_ref: 'cc-connect:project-a-claude',
+        work_dir: '/Projects/A',
+      },
+    }));
+
+    service.stop();
   });
 });

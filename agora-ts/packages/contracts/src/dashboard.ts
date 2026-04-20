@@ -43,6 +43,7 @@ export const agentSummarySchema = z.object({
 
 export const agentStatusItemSchema = z.object({
   id: z.string(),
+  inventory_kind: z.enum(['agent', 'runtime_target']).optional(),
   role: z.string().nullable(),
   status: z.string(),
   presence: z.enum(['online', 'offline', 'disconnected', 'stale']),
@@ -56,10 +57,14 @@ export const agentStatusItemSchema = z.object({
   last_seen_at: z.string().nullable(),
   channel_providers: z.array(z.string()),
   host_framework: z.string().nullable().optional(),
+  runtime_provider: z.string().nullable().optional(),
+  runtime_flavor: z.string().nullable().optional(),
+  runtime_target_ref: z.string().nullable().optional(),
   inventory_sources: z.array(z.string()),
   account_id: z.string().nullable().optional(),
   primary_model: z.string().nullable().optional(),
   workspace_dir: z.string().nullable().optional(),
+  discord_bot_user_ids: z.array(z.string()).optional(),
 });
 
 export const craftsmanStatusItemSchema = z.object({

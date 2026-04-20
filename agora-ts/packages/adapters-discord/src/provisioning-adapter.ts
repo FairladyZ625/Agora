@@ -17,6 +17,7 @@ export interface DiscordIMProvisioningAdapterOptions {
   botToken: string;
   defaultChannelId: string;
   participantTokens?: Record<string, string>;
+  participantUserIds?: Record<string, string>;
   primaryAccountId?: string | null;
   excludedUserIds?: string[];
 }
@@ -35,6 +36,11 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
     this.client = new DiscordHttpClient({ botToken: options.botToken });
     this.defaultChannelId = options.defaultChannelId;
     this.participantTokens = options.participantTokens ?? {};
+    for (const [participantRef, userId] of Object.entries(options.participantUserIds ?? {})) {
+      if (participantRef.trim().length > 0 && looksLikeDiscordUserId(userId)) {
+        this.participantUserIds.set(participantRef, userId);
+      }
+    }
     this.primaryAccountId = options.primaryAccountId ?? null;
     this.excludedUserIds = Array.from(new Set((options.excludedUserIds ?? []).filter((value) => value.length > 0)));
   }

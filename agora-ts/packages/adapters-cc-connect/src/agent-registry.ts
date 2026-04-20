@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import type { AgentInventorySource, RegisteredAgent } from '@agora-ts/core';
 import { loadCcConnectProjectTargets } from './config-targets.js';
+import type { CcConnectProjectTarget } from './config-targets.js';
 
 type RegistryDependencies = {
   env?: NodeJS.ProcessEnv;
@@ -13,6 +14,18 @@ export type CcConnectAgentRegistryOptions = RegistryDependencies;
 
 export function buildCcConnectAgentId(projectName: string) {
   return `cc-connect:${projectName}`;
+}
+
+export function buildCcConnectDiscordParticipantUserIds(targets: CcConnectProjectTarget[]) {
+  const participantUserIds: Record<string, string> = {};
+  for (const target of targets) {
+    const [userId] = target.discord?.bot_user_ids ?? [];
+    if (!userId) {
+      continue;
+    }
+    participantUserIds[buildCcConnectAgentId(target.projectName)] = userId;
+  }
+  return participantUserIds;
 }
 
 export class CcConnectAgentRegistry implements AgentInventorySource {
@@ -36,11 +49,16 @@ export class CcConnectAgentRegistry implements AgentInventorySource {
       readDir: this.readDir,
     }).map((target) => ({
       id: buildCcConnectAgentId(target.projectName),
+      inventory_kind: 'runtime_target' as const,
       host_framework: 'cc-connect',
+      runtime_provider: 'cc-connect',
+      runtime_flavor: target.runtimeFlavor,
+      runtime_target_ref: buildCcConnectAgentId(target.projectName),
       channel_providers: target.channelProviders,
       inventory_sources: ['cc-connect'],
       primary_model: target.primaryModel,
       workspace_dir: target.workDir,
+      discord_bot_user_ids: target.discord?.bot_user_ids ?? [],
       agent_origin: 'user_managed',
     }));
   }

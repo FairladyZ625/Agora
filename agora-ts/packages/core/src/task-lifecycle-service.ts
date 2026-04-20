@@ -68,7 +68,7 @@ export interface TaskLifecycleServiceOptions {
   tryLoadTemplate: (taskType: string) => TaskTemplate | null;
   buildWorkflow: (template: TaskTemplate) => WorkflowDto;
   buildTeam: (template: TaskTemplate) => TaskRecord['team'];
-  enrichTeam: (team: TaskRecord['team']) => TaskRecord['team'];
+  enrichTeam: (team: TaskRecord['team'], input?: { projectId?: string | null }) => TaskRecord['team'];
   taskIdGenerator: () => string;
   validateProjectBinding: (input: {
     projectId: string;
@@ -107,7 +107,7 @@ export class TaskLifecycleService {
   private readonly tryLoadTemplate: (taskType: string) => TaskTemplate | null;
   private readonly buildWorkflow: (template: TaskTemplate) => WorkflowDto;
   private readonly buildTeam: (template: TaskTemplate) => TaskRecord['team'];
-  private readonly enrichTeam: (team: TaskRecord['team']) => TaskRecord['team'];
+  private readonly enrichTeam: TaskLifecycleServiceOptions['enrichTeam'];
   private readonly taskIdGenerator: () => string;
   private readonly validateProjectBinding: TaskLifecycleServiceOptions['validateProjectBinding'];
   private readonly enterStage: TaskLifecycleServiceOptions['enterStage'];
@@ -187,9 +187,9 @@ export class TaskLifecycleService {
       }
     }
 
-    const team = this.enrichTeam(requestedTeam);
     const taskId = this.taskIdGenerator();
     const projectId = input.project_id ?? null;
+    const team = this.enrichTeam(requestedTeam, { projectId });
     const nomosAuthoring = input.control?.nomos_authoring;
     const firstStageId = workflow.graph?.entry_nodes[0] ?? workflow.stages?.[0]?.id ?? null;
     const templateLabel = template?.name ?? input.type;

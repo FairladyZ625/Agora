@@ -58,11 +58,16 @@ describe('runtime ports', () => {
           },
           {
             id: 'cc-connect:codex',
+            inventory_kind: 'runtime_target',
             host_framework: 'cc-connect',
+            runtime_provider: 'cc-connect',
+            runtime_flavor: 'codex',
+            runtime_target_ref: 'cc-connect:codex',
             channel_providers: ['discord'],
             inventory_sources: ['cc-connect'],
             primary_model: 'gpt-5.4',
             workspace_dir: '/tmp/cc-connect',
+            discord_bot_user_ids: ['1491781344664227942'],
           },
         ],
       },
@@ -71,11 +76,16 @@ describe('runtime ports', () => {
     expect(source.listAgents()).toEqual([
       {
         id: 'cc-connect:codex',
+        inventory_kind: 'runtime_target',
         host_framework: 'cc-connect',
+        runtime_provider: 'cc-connect',
+        runtime_flavor: 'codex',
+        runtime_target_ref: 'cc-connect:codex',
         channel_providers: ['discord'],
         inventory_sources: ['cc-connect'],
         primary_model: 'gpt-5.4',
         workspace_dir: '/tmp/cc-connect',
+        discord_bot_user_ids: ['1491781344664227942'],
       },
       {
         id: 'shared',

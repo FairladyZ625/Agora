@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { TaskContextBindingRepository, TaskConversationRepository, TaskRepository, createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { StubIMProvisioningPort } from './im-ports.js';
+import { RuntimeThreadMessageRouter } from './runtime-message-ports.js';
 import { TaskBroadcastService } from './task-broadcast-service.js';
 
 function makeDb() {
@@ -32,6 +33,13 @@ describe('TaskBroadcastService', () => {
         conversation_ref: 'discord-parent',
         thread_ref: 'discord-thread',
       });
+      const routed: Array<Record<string, unknown>> = [];
+      const runtimeThreadMessageRouter = new RuntimeThreadMessageRouter([{
+        runtime_provider: 'cc-connect',
+        sendInboundMessage: async (input) => {
+          routed.push(input);
+        },
+      }]);
 
       const inserted = taskRepository.insertTask({
         id: 'OC-BROADCAST-1',
@@ -77,6 +85,28 @@ describe('TaskBroadcastService', () => {
         taskContextBindingRepository,
         taskConversationRepository,
         imProvisioningPort,
+        taskParticipationService: {
+          listParticipants: () => [
+            {
+              id: 'participant-broadcast-1',
+              task_id: 'OC-BROADCAST-1',
+              binding_id: 'binding-broadcast-1',
+              agent_ref: 'opus',
+              runtime_provider: 'cc-connect',
+              task_role: 'architect',
+              source: 'template',
+              join_status: 'joined',
+              desired_exposure: 'in_thread',
+              exposure_reason: null,
+              exposure_stage_id: null,
+              reconciled_at: null,
+              created_at: '2026-04-19T12:00:00.000Z',
+              joined_at: null,
+              left_at: null,
+            },
+          ],
+        },
+        runtimeThreadMessageRouter,
       });
 
       service.publishTaskStatusBroadcast(taskRepository.getTask('OC-BROADCAST-1')!, {
@@ -116,6 +146,19 @@ describe('TaskBroadcastService', () => {
         current_stage: 'build',
         controller_ref: 'opus',
       });
+      expect(routed).toEqual([
+        expect.objectContaining({
+          task_id: 'OC-BROADCAST-1',
+          provider: 'discord',
+          thread_ref: 'discord-thread',
+          conversation_ref: 'discord-parent',
+          body: expect.stringContaining('Task appears inactive for 120 seconds.'),
+          author_ref: 'agora-bot',
+          display_name: 'agora-bot',
+          participant_binding_id: 'participant-broadcast-1',
+          agent_ref: 'opus',
+        }),
+      ]);
     } finally {
       fixture.cleanup();
     }
@@ -374,6 +417,108 @@ describe('TaskBroadcastService', () => {
       expect(sonnetBrief?.body).toContain('refactoring-ui -> /tmp/skills/refactoring-ui/SKILL.md');
     } finally {
       rmSync(workspaceDir, { recursive: true, force: true });
+      fixture.cleanup();
+    }
+  });
+
+  it('dispatches targeted role briefs into external runtime thread ports without replaying shared bootstrap messages', () => {
+    const fixture = makeDb();
+    try {
+      const { db } = fixture;
+      const taskContextBindingRepository = new TaskContextBindingRepository(db);
+      const taskConversationRepository = new TaskConversationRepository(db);
+      const routed: Array<Record<string, unknown>> = [];
+      const runtimeThreadMessageRouter = new RuntimeThreadMessageRouter([{
+        runtime_provider: 'cc-connect',
+        sendInboundMessage: async (input) => {
+          routed.push(input);
+        },
+      }]);
+
+      const service = new TaskBroadcastService({
+        taskContextBindingRepository,
+        taskConversationRepository,
+        taskParticipationService: {
+          listParticipants: () => [
+            {
+              id: 'participant-1',
+              task_id: 'OC-DISPATCH-1',
+              binding_id: 'binding-dispatch-1',
+              agent_ref: 'cc-connect:agora-codex',
+              runtime_provider: 'cc-connect',
+              task_role: 'developer',
+              source: 'template',
+              join_status: 'joined',
+              desired_exposure: 'in_thread',
+              exposure_reason: null,
+              exposure_stage_id: null,
+              reconciled_at: null,
+              created_at: '2026-04-19T12:00:00.000Z',
+              joined_at: null,
+              left_at: null,
+            },
+            {
+              id: 'participant-2',
+              task_id: 'OC-DISPATCH-1',
+              binding_id: 'binding-dispatch-1',
+              agent_ref: 'opus',
+              runtime_provider: 'openclaw',
+              task_role: 'architect',
+              source: 'template',
+              join_status: 'joined',
+              desired_exposure: 'in_thread',
+              exposure_reason: null,
+              exposure_stage_id: null,
+              reconciled_at: null,
+              created_at: '2026-04-19T12:00:00.000Z',
+              joined_at: null,
+              left_at: null,
+            },
+          ],
+        },
+        runtimeThreadMessageRouter,
+      });
+
+      service.dispatchExternalBootstrapMessages(
+        'OC-DISPATCH-1',
+        {
+          im_provider: 'discord',
+          conversation_ref: 'discord-parent',
+          thread_ref: 'discord-thread',
+        },
+        [
+          {
+            kind: 'bootstrap_root',
+            participant_refs: ['cc-connect:agora-codex', 'opus'],
+            body: 'shared bootstrap',
+          },
+          {
+            kind: 'role_brief',
+            participant_refs: ['cc-connect:agora-codex'],
+            body: '角色简报 cc-connect:agora-codex',
+          },
+          {
+            kind: 'role_brief',
+            participant_refs: ['opus'],
+            body: '角色简报 opus',
+          },
+        ],
+      );
+
+      expect(routed).toEqual([
+        expect.objectContaining({
+          task_id: 'OC-DISPATCH-1',
+          provider: 'discord',
+          thread_ref: 'discord-thread',
+          conversation_ref: 'discord-parent',
+          body: '角色简报 cc-connect:agora-codex',
+          author_ref: 'agora-bot',
+          display_name: 'agora-bot',
+          participant_binding_id: 'participant-1',
+          agent_ref: 'cc-connect:agora-codex',
+        }),
+      ]);
+    } finally {
       fixture.cleanup();
     }
   });

@@ -218,6 +218,7 @@ export function createTaskServiceFromDb(
     ...(contextMaterializationService ? { contextMaterializationService } : {}),
     ...(options.projectBrainAutomationService ? { projectBrainAutomationService: options.projectBrainAutomationService } : {}),
     ...(options.agentRuntimePort ? { agentRuntimePort: options.agentRuntimePort } : {}),
+    ...(options.runtimeThreadMessageRouter ? { runtimeThreadMessageRouter: options.runtimeThreadMessageRouter } : {}),
     ...(options.runtimeRecoveryPort ? { runtimeRecoveryPort: options.runtimeRecoveryPort } : {}),
     ...(options.craftsmanInputPort ? { craftsmanInputPort: options.craftsmanInputPort } : {}),
     ...(options.craftsmanExecutionProbePort ? { craftsmanExecutionProbePort: options.craftsmanExecutionProbePort } : {}),

@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { IMPublishMessageInput, IMProvisioningPort } from './im-ports.js';
-import type { ITaskContextBindingRepository, ITaskConversationRepository, TaskLocaleDto, TaskRecord, WorkflowDto } from '@agora-ts/contracts';
+import type { RuntimeThreadMessageRouter } from './runtime-message-ports.js';
+import type { ITaskContextBindingRepository, ITaskConversationRepository, ParticipantBindingRecord, TaskLocaleDto, TaskRecord, WorkflowDto } from '@agora-ts/contracts';
 import type { SkillCatalogEntry } from './skill-catalog-port.js';
 import { summarizeCraftsmanOutputForHuman } from './craftsman-output.js';
 import { TASK_BRAIN_RUNTIME_DELIVERY_MANIFEST_RELATIVE_PATH } from './task-brain-port.js';
@@ -12,6 +13,8 @@ export interface TaskBroadcastServiceOptions {
   taskContextBindingRepository: ITaskContextBindingRepository;
   taskConversationRepository: ITaskConversationRepository;
   imProvisioningPort?: IMProvisioningPort | undefined;
+  taskParticipationService?: ParticipantLookup | undefined;
+  runtimeThreadMessageRouter?: RuntimeThreadMessageRouter | undefined;
   getTaskBrainWorkspacePath?: ((taskId: string) => string | null) | undefined;
   trackBackgroundOperation?: (<T>(operation: Promise<T>) => Promise<T>) | undefined;
 }
@@ -52,10 +55,16 @@ type CraftsmanExecutionLike = {
   } | null;
 };
 
+type ParticipantLookup = {
+  listParticipants(taskId: string): ParticipantBindingRecord[];
+};
+
 export class TaskBroadcastService {
   private readonly taskContextBindingRepository: ITaskContextBindingRepository;
   private readonly taskConversationRepository: ITaskConversationRepository;
   private readonly imProvisioningPort: IMProvisioningPort | undefined;
+  private readonly taskParticipationService: ParticipantLookup | undefined;
+  private readonly runtimeThreadMessageRouter: RuntimeThreadMessageRouter | undefined;
   private readonly getTaskBrainWorkspacePath: ((taskId: string) => string | null) | undefined;
   private readonly trackBackgroundOperation: (<T>(operation: Promise<T>) => Promise<T>) | undefined;
 
@@ -63,6 +72,8 @@ export class TaskBroadcastService {
     this.taskContextBindingRepository = options.taskContextBindingRepository;
     this.taskConversationRepository = options.taskConversationRepository;
     this.imProvisioningPort = options.imProvisioningPort;
+    this.taskParticipationService = options.taskParticipationService;
+    this.runtimeThreadMessageRouter = options.runtimeThreadMessageRouter;
     this.getTaskBrainWorkspacePath = options.getTaskBrainWorkspacePath;
     this.trackBackgroundOperation = options.trackBackgroundOperation;
   }
@@ -149,6 +160,29 @@ export class TaskBroadcastService {
     }
   }
 
+  dispatchExternalBootstrapMessages(
+    taskId: string,
+    binding: {
+      conversation_ref?: string | null;
+      thread_ref?: string | null;
+      im_provider: string;
+    },
+    messages: IMPublishMessageInput[],
+  ) {
+    if (!this.taskParticipationService || !this.runtimeThreadMessageRouter) {
+      return;
+    }
+    const participantsByAgent = new Map(
+      this.taskParticipationService.listParticipants(taskId).map((participant) => [participant.agent_ref, participant] as const),
+    );
+    for (const message of messages) {
+      if (message.kind !== 'role_brief') {
+        continue;
+      }
+      this.dispatchExternalParticipantMessage(taskId, binding, message.participant_refs ?? [], message.body, participantsByAgent);
+    }
+  }
+
   publishTaskStatusBroadcast(
     task: TaskRecord,
     input: {
@@ -207,6 +241,48 @@ export class TaskBroadcastService {
       body_format: 'plain_text',
       occurred_at: input.occurredAt ?? new Date().toISOString(),
       metadata: envelope,
+    });
+    this.dispatchExternalParticipantMessage(task.id, {
+      conversation_ref: binding.conversation_ref,
+      thread_ref: binding.thread_ref,
+      im_provider: binding.im_provider,
+    }, input.participantRefs ?? [], envelope.lines.join('\n'));
+  }
+
+  private dispatchExternalParticipantMessage(
+    taskId: string,
+    binding: {
+      conversation_ref?: string | null;
+      thread_ref?: string | null;
+      im_provider: string;
+    },
+    participantRefs: string[],
+    body: string,
+    participantsByAgent?: Map<string, ParticipantBindingRecord>,
+  ) {
+    if (!this.taskParticipationService || !this.runtimeThreadMessageRouter || participantRefs.length === 0) {
+      return;
+    }
+    const resolvedParticipants = participantsByAgent
+      ?? new Map(this.taskParticipationService.listParticipants(taskId).map((participant) => [participant.agent_ref, participant] as const));
+    const targetedParticipants = participantRefs
+      .map((participantRef) => resolvedParticipants.get(participantRef) ?? null)
+      .filter((participant): participant is ParticipantBindingRecord => (
+        participant !== null && participant.runtime_provider !== null && participant.join_status !== 'left'
+      ));
+    if (targetedParticipants.length === 0) {
+      return;
+    }
+    this.runtimeThreadMessageRouter.dispatch({
+      task_id: taskId,
+      provider: binding.im_provider,
+      thread_ref: binding.thread_ref ?? null,
+      conversation_ref: binding.conversation_ref ?? null,
+      entry_id: `system-dispatch-${randomUUID()}`,
+      body,
+      author_ref: 'agora-bot',
+      display_name: 'agora-bot',
+      participants: targetedParticipants,
     });
   }
 
