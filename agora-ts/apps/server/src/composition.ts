@@ -31,6 +31,7 @@ import {
   RetrievalRegistry,
   RetrievalService,
   RolePackService,
+  RuntimeTargetService,
   TaskAuthorityService,
   type ProjectKnowledgePort,
   type CraftsmanInputPort,
@@ -57,12 +58,10 @@ import {
   type PresenceSource,
 } from '@agora-ts/core';
 import {
-  buildCcConnectDiscordParticipantUserIds,
   CcConnectAgentRegistry,
   CcConnectBridgeRuntimeService,
   CcConnectManagementPresenceSource,
   CcConnectSessionMirrorService,
-  loadCcConnectProjectTargets,
 } from '@agora-ts/adapters-cc-connect';
 import { FilesystemContextSourceRetrievalAdapter, FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter } from '@agora-ts/adapters-brain';
 import { ProjectContextBriefingMaterializer, RuntimeRepoShimMaterializer } from '@agora-ts/adapters-materialization';
@@ -94,6 +93,7 @@ import {
   ProjectWriteLockRepository,
   RoleBindingRepository,
   RoleDefinitionRepository,
+  RuntimeTargetOverlayRepository,
   RuntimeSessionBindingRepository,
   SubtaskRepository,
   TaskAuthorityRepository,
@@ -561,7 +561,8 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
             ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
             : {},
         );
-        const ccConnectParticipantUserIds = buildCcConnectDiscordParticipantUserIds(loadCcConnectProjectTargets());
+        const ccConnectParticipantUserIds = createDefaultRuntimeTargetService(context.db)
+          .buildPresentationIdentityMap('discord');
         const primaryAccountId = Object.entries(accountTokens).find(([, token]) => token === im.discord?.bot_token)?.[0] ?? null;
         return new DiscordIMProvisioningAdapter({
           botToken: im.discord.bot_token,
@@ -712,15 +713,33 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       if (!deps.imProvisioningPort) {
         return undefined;
       }
+      const runtimeTargetService = createDefaultRuntimeTargetService(_context.db);
       return new CcConnectBridgeRuntimeService({
         imProvisioningPort: deps.imProvisioningPort,
         taskConversationService: deps.taskConversationService,
         taskContextBindingService: deps.taskContextBindingService,
         taskParticipationService: deps.taskParticipationService,
         liveSessionStore: deps.liveSessionStore,
+        runtimeTargetLookup: {
+          findRuntimeTarget: (runtimeTargetRef) => runtimeTargetService.findRuntimeTarget(runtimeTargetRef),
+        },
       });
     },
   };
+}
+
+function createDefaultRuntimeTargetService(db: AgoraDatabase) {
+  return new RuntimeTargetService({
+    agentInventory: new CompositeAgentInventorySource([
+      new OpenClawAgentRegistry(
+        process.env.AGORA_OPENCLAW_CONFIG_PATH
+          ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
+          : {},
+      ),
+      new CcConnectAgentRegistry(),
+    ]),
+    overlayRepository: new RuntimeTargetOverlayRepository(db),
+  });
 }
 
 export function buildServerComposition(

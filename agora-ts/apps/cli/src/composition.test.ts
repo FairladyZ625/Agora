@@ -4,8 +4,11 @@ import { join } from 'node:path';
 import process from 'node:process';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { InteractiveRuntimePort, TaskService } from '@agora-ts/core';
-import { StubIMProvisioningPort } from '@agora-ts/core';
-import { createCliComposition } from './composition.js';
+import { CompositeAgentInventorySource, RuntimeTargetService, StubIMProvisioningPort } from '@agora-ts/core';
+import { createAgoraDatabase, runMigrations, RuntimeTargetOverlayRepository } from '@agora-ts/db';
+import { CcConnectAgentRegistry } from '@agora-ts/adapters-cc-connect';
+import { OpenClawAgentRegistry } from '@agora-ts/adapters-openclaw';
+import { createCliComposition, createDefaultCliCompositionFactories } from './composition.js';
 
 const tempDirs: string[] = [];
 const originalHome = process.env.HOME;
@@ -359,6 +362,106 @@ token = "MTQ5MTc4MTM0NDY2NDIyNzk0Mg.fake.fake"
     ]));
     expect(Reflect.get(provisioningPort as object, 'primaryAccountId')).toBe('main');
     composition.db.close();
+  });
+
+  it('respects runtime target presentation overlays when wiring CLI Discord provisioning', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    const ccConnectConfigPath = join(dir, 'cc-connect.toml');
+    delete process.env.AGORA_DB_PATH;
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    process.env.AGORA_OPENCLAW_CONFIG_PATH = join(dir, 'openclaw.json');
+    process.env.AGORA_CC_CONNECT_CONFIG_PATHS = ccConnectConfigPath;
+    process.env.HOME = dir;
+    mkdirSync(join(dir, '.openclaw'), { recursive: true });
+    writeFileSync(join(dir, '.openclaw', 'discord-accounts.json'), JSON.stringify({
+      accounts: {
+        main: { token: 'discord-bot-token' },
+      },
+    }));
+    writeFileSync(ccConnectConfigPath, `
+[[projects]]
+name = "agora-codex"
+
+[projects.agent]
+type = "codex"
+
+[[projects.platforms]]
+type = "discord"
+
+[projects.platforms.options]
+token = "MTQ5MTc4MTM0NDY2NDIyNzk0Mg.fake.fake"
+
+[[projects]]
+name = "agora-claude"
+
+[projects.agent]
+type = "claude"
+
+[[projects.platforms]]
+type = "discord"
+
+[projects.platforms.options]
+token = "MTQ5MTc0Nzg3Nzc5MjM4NzIwMw.fake.fake"
+`);
+    writeFileSync(configPath, JSON.stringify({
+      db_path: dbPath,
+      im: {
+        provider: 'discord',
+        discord: {
+          bot_token: 'discord-bot-token',
+          default_channel_id: 'discord-parent',
+        },
+      },
+    }));
+    const db = createAgoraDatabase({ dbPath });
+    runMigrations(db);
+    const overlays = new RuntimeTargetOverlayRepository(db);
+    overlays.upsertOverlay({
+      runtime_target_ref: 'cc-connect:agora-codex',
+      presentation_mode: 'headless',
+    });
+    overlays.upsertOverlay({
+      runtime_target_ref: 'cc-connect:agora-claude',
+      presentation_mode: 'im_presented',
+      presentation_provider: 'discord',
+      presentation_identity_ref: '149999999999999999',
+    });
+    const inspectionDb = createAgoraDatabase({ dbPath });
+    runMigrations(inspectionDb);
+    const runtimeTargetService = new RuntimeTargetService({
+      agentInventory: new CompositeAgentInventorySource([
+        new OpenClawAgentRegistry(
+          process.env.AGORA_OPENCLAW_CONFIG_PATH
+            ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
+            : {},
+        ),
+        new CcConnectAgentRegistry(),
+      ]),
+      overlayRepository: new RuntimeTargetOverlayRepository(inspectionDb),
+    });
+    expect(runtimeTargetService.buildPresentationIdentityMap('discord')).toEqual({
+      'cc-connect:agora-claude': '149999999999999999',
+    });
+    const factories = createDefaultCliCompositionFactories();
+    const rawProvisioningPort = factories.createIMProvisioningPort({
+      db: inspectionDb,
+      config: {
+        im: {
+          provider: 'discord',
+          discord: {
+            bot_token: 'discord-bot-token',
+            default_channel_id: 'discord-parent',
+          },
+        },
+      },
+    } as never);
+    expect(Reflect.get(rawProvisioningPort as object, 'participantUserIds')).toEqual(new Map([
+      ['cc-connect:agora-claude', '149999999999999999'],
+    ]));
+    inspectionDb.close();
+    db.close();
   });
 
   it('uses tmux craftsman transport ports and git worktree isolation when configured', () => {

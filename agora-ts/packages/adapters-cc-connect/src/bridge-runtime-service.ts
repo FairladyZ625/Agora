@@ -37,6 +37,13 @@ export interface CcConnectBridgeRuntimeServiceOptions {
   taskContextBindingService: Pick<TaskContextBindingService, 'getBindingById' | 'getActiveBinding'>;
   taskParticipationService: Pick<TaskParticipationService, 'getParticipantById' | 'getRuntimeSessionByParticipant' | 'bindRuntimeSession'>;
   liveSessionStore?: Pick<LiveSessionStore, 'get' | 'upsert'>;
+  runtimeTargetLookup?: {
+    findRuntimeTarget(runtimeTargetRef: string): {
+      runtime_target_ref: string;
+      display_name: string | null;
+      presentation_mode: 'headless' | 'im_presented';
+    } | null;
+  };
   createClient?: (target: CcConnectProjectTarget) => BridgeClientLike;
   logger?: BridgeRuntimeLogger;
   now?: () => Date;
@@ -195,6 +202,7 @@ export class CcConnectBridgeRuntimeService implements RuntimeThreadMessagePort {
       taskConversationService: this.options.taskConversationService,
       taskContextBindingService: this.options.taskContextBindingService,
       taskParticipationService: this.options.taskParticipationService,
+      ...(this.options.runtimeTargetLookup ? { runtimeTargetLookup: this.options.runtimeTargetLookup } : {}),
       now: this.now,
     });
 

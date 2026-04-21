@@ -42,6 +42,7 @@ import {
   NotificationOutboxRepository,
   TemplateRepository,
   ParticipantBindingRepository,
+  RuntimeTargetOverlayRepository,
   RuntimeSessionBindingRepository,
   TaskAuthorityRepository,
   ProjectWriteLockRepository,
@@ -75,6 +76,7 @@ import {
   ProjectService,
   RetrievalRegistry,
   RetrievalService,
+  RuntimeTargetService,
   StubIMMessagingPort,
   RolePackService,
   TaskAuthorityService,
@@ -102,9 +104,7 @@ import {
 import { FilesystemContextSourceRetrievalAdapter, FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter, OpenAiCompatibleProjectBrainEmbeddingAdapter, QdrantProjectBrainVectorIndexAdapter } from '@agora-ts/adapters-brain';
 import { ProjectContextBriefingMaterializer, RuntimeRepoShimMaterializer } from '@agora-ts/adapters-materialization';
 import {
-  buildCcConnectDiscordParticipantUserIds,
   CcConnectAgentRegistry,
-  loadCcConnectProjectTargets,
 } from '@agora-ts/adapters-cc-connect';
 import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
 import { OsHostResourcePort } from '@agora-ts/adapters-host';
@@ -325,7 +325,8 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
             ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
             : {},
         );
-        const ccConnectParticipantUserIds = buildCcConnectDiscordParticipantUserIds(loadCcConnectProjectTargets());
+        const ccConnectParticipantUserIds = createDefaultRuntimeTargetService(context.db)
+          .buildPresentationIdentityMap('discord');
         const primaryAccountId = Object.entries(accountTokens).find(([, token]) => token === im.discord?.bot_token)?.[0] ?? null;
         return new DiscordIMProvisioningAdapter({
           botToken: im.discord.bot_token,
@@ -594,6 +595,20 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
         })
       : undefined,
   };
+}
+
+function createDefaultRuntimeTargetService(db: AgoraDatabase) {
+  return new RuntimeTargetService({
+    agentInventory: new CompositeAgentInventorySource([
+      new OpenClawAgentRegistry(
+        process.env.AGORA_OPENCLAW_CONFIG_PATH
+          ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
+          : {},
+      ),
+      new CcConnectAgentRegistry(),
+    ]),
+    overlayRepository: new RuntimeTargetOverlayRepository(db),
+  });
 }
 
 export function createCliComposition(
