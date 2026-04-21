@@ -23,7 +23,7 @@ import type {
   TaskControlDto,
   TaskLocaleDto,
   TaskSkillPolicyDto,
-  TeamDto,
+  TaskTeamDto,
   WorkflowDto,
 } from './task-api.js';
 
@@ -65,7 +65,7 @@ export interface TaskRecord {
   archive_status: string | null;
   current_stage: string | null;
   skill_policy: TaskSkillPolicyDto | null;
-  team: TeamDto;
+  team: TaskTeamDto;
   workflow: WorkflowDto;
   control: TaskControlDto | null;
   scheduler: unknown;
@@ -489,7 +489,7 @@ export interface UpdateTaskInput {
   state?: string;
   current_stage?: string | null;
   skill_policy?: TaskSkillPolicyDto | null;
-  team?: TeamDto;
+  team?: TaskTeamDto;
   workflow?: WorkflowDto;
   control?: TaskControlDto | null;
   scheduler?: unknown;

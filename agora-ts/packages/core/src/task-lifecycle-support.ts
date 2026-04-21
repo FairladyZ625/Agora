@@ -117,7 +117,8 @@ export class TaskLifecycleSupport {
   enrichTeam(team: TaskRecord['team'], input: { projectId?: string | null } = {}): TaskRecord['team'] {
     return {
       members: team.members.map((member) => {
-        const agentId = this.resolveProjectRuntimeTargetAgentId(member, input.projectId) ?? member.agentId;
+        const projectRuntimeTargetResolution = this.resolveProjectRuntimeTarget(member, input.projectId);
+        const agentId = projectRuntimeTargetResolution?.target_ref ?? member.agentId;
         const resolved = this.agentRuntimePort?.resolveAgent(agentId);
         const agentOrigin: 'agora_managed' | 'user_managed' = member.agent_origin
           ?? resolved?.agent_origin
@@ -128,6 +129,18 @@ export class TaskLifecycleSupport {
         return {
           ...member,
           agentId,
+          ...(projectRuntimeTargetResolution?.target_ref
+            ? { runtime_target_ref: projectRuntimeTargetResolution.target_ref }
+            : {}),
+          ...(projectRuntimeTargetResolution?.runtime_flavor !== undefined
+            ? { runtime_flavor: projectRuntimeTargetResolution.runtime_flavor }
+            : {}),
+          ...(projectRuntimeTargetResolution?.selected_by
+            ? { runtime_selection_source: projectRuntimeTargetResolution.selected_by }
+            : {}),
+          ...(projectRuntimeTargetResolution?.selected_reason
+            ? { runtime_selection_reason: projectRuntimeTargetResolution.selected_reason }
+            : {}),
           agent_origin: agentOrigin,
           briefing_mode: briefingMode,
         };
@@ -135,14 +148,14 @@ export class TaskLifecycleSupport {
     };
   }
 
-  private resolveProjectRuntimeTargetAgentId(member: TaskRecord['team']['members'][number], projectId?: string | null) {
+  private resolveProjectRuntimeTarget(member: TaskRecord['team']['members'][number], projectId?: string | null) {
     if (!projectId || !this.projectService || member.agentId !== member.role) {
       return null;
     }
     return this.projectService.resolveProjectRuntimeTarget(projectId, {
       role: member.role,
       model_preference: member.model_preference,
-    })?.target_ref ?? null;
+    });
   }
 
   withControllerRef(task: TaskRecord): TaskRecord & {

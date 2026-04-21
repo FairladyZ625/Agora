@@ -68,6 +68,7 @@ async function main() {
 
   try {
     const agentRef = 'cc-connect:agora-codex';
+    const projectId = 'proj-external-dispatch';
     const imProvisioningPort = new StubIMProvisioningPort({
       im_provider: 'discord',
       conversation_ref: 'discord-parent-channel',
@@ -122,6 +123,18 @@ async function main() {
         begin: () => db.exec('BEGIN'),
         commit: () => db.exec('COMMIT'),
         rollback: () => db.exec('ROLLBACK'),
+      },
+    });
+    projectService.createProject({
+      id: projectId,
+      name: 'External Dispatch Runtime Targets',
+      metadata: {
+        runtime_targets: {
+          default_coding: agentRef,
+          flavors: {
+            codex: agentRef,
+          },
+        },
       },
     });
     const taskContextBindingService = new TaskContextBindingService({
@@ -188,13 +201,14 @@ async function main() {
       creator: 'archon',
       description: 'prove Agora dispatches the standard role brief to external runtime participants',
       priority: 'normal',
+      project_id: projectId,
       team_override: {
         members: [
           {
             role: 'developer',
-            agentId: agentRef,
+            agentId: 'developer',
             member_kind: 'citizen',
-            model_preference: 'cc-connect',
+            model_preference: 'codex',
           },
         ],
       },
@@ -214,7 +228,6 @@ async function main() {
       im_target: {
         provider: 'discord',
         visibility: 'private',
-        participant_refs: [agentRef],
       },
     });
 
@@ -238,6 +251,17 @@ async function main() {
 
     const participant = participants.find((item) => item.agent_ref === agentRef);
     assert(participant, 'expected seeded cc-connect participant');
+    const status = taskService.getTaskStatus('OC-EXTERNAL-DISPATCH-1');
+    const member = status?.task.team?.members.find((item) => item.role === 'developer');
+    assert(member, 'expected developer team member in task status');
+    assert(member.agentId === agentRef, 'expected project runtime policy to resolve developer placeholder to external target');
+    assert(member.runtime_target_ref === agentRef, 'expected runtime target ref in task status');
+    assert(member.runtime_flavor === 'codex', 'expected runtime flavor in task status');
+    assert(member.runtime_selection_source === 'project_flavor_default', 'expected runtime selection source in task status');
+    assert(
+      member.runtime_selection_reason === 'project runtime_targets.flavors.codex',
+      'expected runtime selection reason in task status',
+    );
     const sessionKey = `agora-discord:discord-thread-external-dispatch-1:${participant.id}`;
     taskParticipationService.bindRuntimeSession({
       participant_binding_id: participant.id,
@@ -308,6 +332,10 @@ async function main() {
       task_id: 'OC-EXTERNAL-DISPATCH-1',
       thread_ref: routed[0].thread_ref,
       external_agent_ref: routed[0].agent_ref,
+      runtime_target_ref: member.runtime_target_ref,
+      runtime_flavor: member.runtime_flavor,
+      runtime_selection_source: member.runtime_selection_source,
+      runtime_selection_reason: member.runtime_selection_reason,
       im_bootstrap_messages: messages.map((message) => message.kind),
       external_dispatch_count: routed.length,
       relay_health: relayHealth,

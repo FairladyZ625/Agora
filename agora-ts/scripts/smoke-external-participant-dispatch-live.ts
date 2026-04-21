@@ -63,6 +63,7 @@ async function main() {
   process.env.AGORA_CC_CONNECT_CONFIG_PATHS = options.ccConnectConfig;
 
   const taskId = options.taskId ?? `OC-H9B-LIVE-${Date.now()}`;
+  const agoraProjectId = `h9-entry-cutover-${taskId.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`;
   const goal = `live external participant dispatch smoke ${taskId}`;
   const timeoutMs = Number(options.timeoutMs);
   const pollMs = Number(options.pollMs);
@@ -75,19 +76,33 @@ async function main() {
   try {
     await maybeReady?.whenReady?.();
 
+    runtime.projectService.createProject({
+      id: agoraProjectId,
+      name: `H9 Entry Cutover ${taskId}`,
+      metadata: {
+        runtime_targets: {
+          default_coding: options.agentRef,
+          flavors: {
+            codex: options.agentRef,
+          },
+        },
+      },
+    });
+
     const task = runtime.taskService.createTask({
       title: `H9B live external dispatch ${taskId}`,
       type: 'custom',
       creator: 'archon',
       description: goal,
       priority: 'normal',
+      project_id: agoraProjectId,
       team_override: {
         members: [
           {
             role: 'developer',
-            agentId: options.agentRef,
+            agentId: 'developer',
             member_kind: 'citizen',
-            model_preference: 'cc-connect',
+            model_preference: 'codex',
           },
         ],
       },
@@ -107,12 +122,22 @@ async function main() {
       im_target: {
         provider: 'discord',
         visibility: 'private',
-        participant_refs: [options.agentRef],
       },
     });
 
     const actualTaskId = task.id;
     await runtime.taskService.drainBackgroundOperations();
+    const taskStatus = runtime.taskService.getTaskStatus(actualTaskId);
+    const member = taskStatus?.task.team?.members.find((item) => item.role === 'developer');
+    assert(member, 'expected developer team member in task status');
+    assert(member.agentId === options.agentRef, `expected project runtime target resolution to pick ${options.agentRef}`);
+    assert(member.runtime_target_ref === options.agentRef, 'expected runtime target ref in task status');
+    assert(member.runtime_flavor === 'codex', 'expected runtime flavor in task status');
+    assert(member.runtime_selection_source === 'project_flavor_default', 'expected runtime selection source in task status');
+    assert(
+      member.runtime_selection_reason === 'project runtime_targets.flavors.codex',
+      'expected runtime selection reason in task status',
+    );
     const binding = await waitFor('task context binding', () => runtime.taskContextBindingService.getActiveBinding(actualTaskId), timeoutMs, pollMs);
     bindingId = binding.id;
     threadRef = binding.thread_ref;
@@ -161,6 +186,8 @@ async function main() {
       const matched = detail.history.some((message) => (
         message.content.includes(goal)
         && message.content.includes(`角色简报 ${options.agentRef}`)
+        && message.content.includes('选择来源: project_flavor_default')
+        && message.content.includes('选择原因: project runtime_targets.flavors.codex')
       ));
       return matched ? detail : null;
     }, timeoutMs, pollMs);
@@ -195,8 +222,13 @@ async function main() {
       ok: true,
       requested_task_id: taskId,
       task_id: actualTaskId,
+      project_id: agoraProjectId,
       thread_ref: threadRef,
       external_agent_ref: options.agentRef,
+      runtime_target_ref: member.runtime_target_ref,
+      runtime_flavor: member.runtime_flavor,
+      runtime_selection_source: member.runtime_selection_source,
+      runtime_selection_reason: member.runtime_selection_reason,
       runtime_session_ref: runtimeSession.runtime_session_ref,
       cc_connect_session_id: sessionDetail.id,
       cc_connect_history_count: sessionDetail.history_count,

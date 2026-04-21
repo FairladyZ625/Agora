@@ -706,11 +706,21 @@ describe('task service', () => {
     expect(task.team.members[0]).toMatchObject({
       role: 'developer',
       agentId: 'cc-connect:project-a-codex',
+      runtime_target_ref: 'cc-connect:project-a-codex',
+      runtime_flavor: 'codex',
+      runtime_selection_source: 'project_flavor_default',
+      runtime_selection_reason: 'project runtime_targets.flavors.codex',
       agent_origin: 'user_managed',
       briefing_mode: 'overlay_full',
     });
     const status = service.getTaskStatus(task.id);
     expect(status?.task.team?.members[0]?.agentId).toBe('cc-connect:project-a-codex');
+    expect(status?.task.team?.members[0]).toMatchObject({
+      runtime_target_ref: 'cc-connect:project-a-codex',
+      runtime_flavor: 'codex',
+      runtime_selection_source: 'project_flavor_default',
+      runtime_selection_reason: 'project runtime_targets.flavors.codex',
+    });
   });
 
   it('does not override explicit project task agent refs with project default runtime targets', () => {
@@ -824,7 +834,13 @@ describe('task service', () => {
       },
     });
 
-    expect(task.team.members[0]?.agentId).toBe('cc-connect:project-a-claude');
+    expect(task.team.members[0]).toMatchObject({
+      agentId: 'cc-connect:project-a-claude',
+      runtime_target_ref: 'cc-connect:project-a-claude',
+      runtime_flavor: 'claude-code',
+      runtime_selection_source: 'project_flavor_default',
+      runtime_selection_reason: 'project runtime_targets.flavors.claude-code',
+    });
   });
 
   it('lets explicit model preference override project role runtime policy flavor', () => {
@@ -885,7 +901,13 @@ describe('task service', () => {
       },
     });
 
-    expect(task.team.members[0]?.agentId).toBe('cc-connect:project-a-codex');
+    expect(task.team.members[0]).toMatchObject({
+      agentId: 'cc-connect:project-a-codex',
+      runtime_target_ref: 'cc-connect:project-a-codex',
+      runtime_flavor: 'codex',
+      runtime_selection_source: 'project_flavor_default',
+      runtime_selection_reason: 'project runtime_targets.flavors.codex',
+    });
   });
 
   it('retains branch and complete edges in task blueprints for graph-backed workflows', () => {
