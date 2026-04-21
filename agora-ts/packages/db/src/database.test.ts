@@ -84,6 +84,7 @@ describe('agora-ts sqlite bootstrap', () => {
       '024_project_agent_rosters.sql',
       '025_task_authorities.sql',
       '026_project_write_locks.sql',
+      '027_runtime_target_overlays.sql',
     ]);
     const taskTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'")
@@ -133,6 +134,10 @@ describe('agora-ts sqlite bootstrap', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'project_write_locks'")
       .get() as { name: string } | undefined;
     expect(projectWriteLocksTable?.name).toBe('project_write_locks');
+    const runtimeTargetOverlaysTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'runtime_target_overlays'")
+      .get() as { name: string } | undefined;
+    expect(runtimeTargetOverlaysTable?.name).toBe('runtime_target_overlays');
     const taskColumns = db.prepare('PRAGMA table_info(tasks)').all() as Array<{ name: string }>;
     expect(taskColumns.map((column) => column.name)).toContain('skill_policy');
   });

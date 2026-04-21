@@ -2209,11 +2209,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
       const runtimeTargets = options.clearRuntimeTargets
         ? null
         : buildProjectRuntimeTargetsUpdate({
-          defaultTarget: options.default,
-          defaultCoding: options.defaultCoding,
-          defaultReview: options.defaultReview,
-          flavorBindings: options.flavor ?? [],
-        });
+            ...(options.default !== undefined ? { defaultTarget: options.default } : {}),
+            ...(options.defaultCoding !== undefined ? { defaultCoding: options.defaultCoding } : {}),
+            ...(options.defaultReview !== undefined ? { defaultReview: options.defaultReview } : {}),
+            flavorBindings: options.flavor ?? [],
+          });
       const roleRuntimePolicy = buildProjectRoleRuntimePolicyUpdate(options.roleFlavor ?? []);
       const runtimePolicy = projectService.updateProjectRuntimePolicy(projectId, {
         ...(runtimeTargets !== undefined ? { runtime_targets: runtimeTargets } : {}),
