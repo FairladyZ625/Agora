@@ -40,6 +40,17 @@ export class RuntimeTargetService {
     return buildRuntimeTarget(agent, this.options.overlayRepository.getOverlay(runtimeTargetRef));
   }
 
+  findRuntimeTarget(runtimeTargetRef: string): RuntimeTargetDto | null {
+    try {
+      return this.getRuntimeTarget(runtimeTargetRef);
+    } catch (error) {
+      if (error instanceof NotFoundError) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   getOverlay(runtimeTargetRef: string): RuntimeTargetOverlayDto | null {
     return this.options.overlayRepository.getOverlay(runtimeTargetRef);
   }
@@ -64,6 +75,31 @@ export class RuntimeTargetService {
   clearOverlay(runtimeTargetRef: string): boolean {
     return this.options.overlayRepository.deleteOverlay(runtimeTargetRef);
   }
+
+  buildPresentationIdentityMap(provider: string): Record<string, string> {
+    return buildRuntimeTargetPresentationIdentityMap(this.listRuntimeTargets(), provider);
+  }
+}
+
+export function buildRuntimeTargetPresentationIdentityMap(
+  runtimeTargets: RuntimeTargetDto[],
+  provider: string,
+): Record<string, string> {
+  const participantUserIds: Record<string, string> = {};
+  for (const target of runtimeTargets) {
+    if (!target.enabled || target.presentation_mode !== 'im_presented') {
+      continue;
+    }
+    if (target.presentation_provider !== provider) {
+      continue;
+    }
+    const identityRef = target.presentation_identity_ref?.trim();
+    if (!identityRef) {
+      continue;
+    }
+    participantUserIds[target.runtime_target_ref] = identityRef;
+  }
+  return participantUserIds;
 }
 
 function isRuntimeTarget(agent: RegisteredAgent) {

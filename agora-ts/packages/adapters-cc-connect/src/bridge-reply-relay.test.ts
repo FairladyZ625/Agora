@@ -94,6 +94,30 @@ describe('CcConnectBridgeReplyRelayService', () => {
           closed_at: null,
         }),
       },
+      runtimeTargetLookup: {
+        findRuntimeTarget: () => ({
+          runtime_target_ref: 'cc-connect:agora-codex',
+          inventory_kind: 'runtime_target',
+          runtime_provider: 'cc-connect',
+          runtime_flavor: 'codex',
+          host_framework: 'cc-connect',
+          primary_model: null,
+          workspace_dir: '/repo/agora',
+          channel_providers: ['discord'],
+          inventory_sources: ['cc-connect'],
+          discord_bot_user_ids: ['1491781344664227942'],
+          enabled: true,
+          display_name: 'Codex Review Bot',
+          tags: [],
+          allowed_projects: [],
+          default_roles: [],
+          presentation_mode: 'headless',
+          presentation_provider: null,
+          presentation_identity_ref: null,
+          metadata: null,
+          discovered: true,
+        }),
+      },
       now: () => new Date('2026-04-14T08:00:10.000Z'),
     });
 
@@ -120,7 +144,12 @@ describe('CcConnectBridgeReplyRelayService', () => {
       direction: 'outbound',
       author_kind: 'agent',
       author_ref: 'cc-connect:agora-codex',
+      display_name: 'Codex Review Bot',
       body: 'Done. Here is the summary.',
+      metadata: expect.objectContaining({
+        presentation_mode: 'headless',
+        runtime_target_display_name: 'Codex Review Bot',
+      }),
     }));
     expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
       source: 'cc-connect',

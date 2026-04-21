@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createAgoraDatabase,
   ParticipantBindingRepository,
+  RuntimeTargetOverlayRepository,
   runMigrations,
   RuntimeSessionBindingRepository,
   TaskContextBindingRepository,
@@ -230,7 +231,10 @@ token = "MTQ5MTc4MTM0NDY2NDIyNzk0Mg.fake.fake"
 
     const { createDefaultServerCompositionFactories } = await import('./composition.js');
     const factories = createDefaultServerCompositionFactories();
+    const db = createAgoraDatabase({ dbPath: join(dir, 'agora.db') });
+    runMigrations(db);
     const provisioningPort = factories.createIMProvisioningPort({
+      db,
       config: {
         im: {
           provider: 'discord',
@@ -247,6 +251,76 @@ token = "MTQ5MTc4MTM0NDY2NDIyNzk0Mg.fake.fake"
         'cc-connect:agora-codex': '1491781344664227942',
       },
     });
+    db.close();
+  });
+
+  it('respects runtime target presentation overlays when resolving cc-connect Discord participant user ids', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agora-ts-server-cc-connect-presentation-'));
+    tempDirs.push(dir);
+    const configPath = join(dir, 'cc-connect.toml');
+    const dbPath = join(dir, 'agora.db');
+    process.env.AGORA_CC_CONNECT_CONFIG_PATHS = configPath;
+    writeFileSync(configPath, `
+[[projects]]
+name = "agora-codex"
+
+[projects.agent]
+type = "codex"
+
+[[projects.platforms]]
+type = "discord"
+
+[projects.platforms.options]
+token = "MTQ5MTc4MTM0NDY2NDIyNzk0Mg.fake.fake"
+
+[[projects]]
+name = "agora-claude"
+
+[projects.agent]
+type = "claude"
+
+[[projects.platforms]]
+type = "discord"
+
+[projects.platforms.options]
+token = "MTQ5MTc0Nzg3Nzc5MjM4NzIwMw.fake.fake"
+`);
+
+    const db = createAgoraDatabase({ dbPath });
+    runMigrations(db);
+    const overlays = new RuntimeTargetOverlayRepository(db);
+    overlays.upsertOverlay({
+      runtime_target_ref: 'cc-connect:agora-codex',
+      presentation_mode: 'headless',
+    });
+    overlays.upsertOverlay({
+      runtime_target_ref: 'cc-connect:agora-claude',
+      presentation_mode: 'im_presented',
+      presentation_provider: 'discord',
+      presentation_identity_ref: '149999999999999999',
+    });
+
+    const { createDefaultServerCompositionFactories } = await import('./composition.js');
+    const factories = createDefaultServerCompositionFactories();
+    const provisioningPort = factories.createIMProvisioningPort({
+      db,
+      config: {
+        im: {
+          provider: 'discord',
+          discord: {
+            bot_token: 'main-token',
+            default_channel_id: 'chan-default',
+          },
+        },
+      },
+    } as never);
+
+    expect(Reflect.get(provisioningPort as object, 'options')).toMatchObject({
+      participantUserIds: {
+        'cc-connect:agora-claude': '149999999999999999',
+      },
+    });
+    db.close();
   });
 
   it('passes the runtime thread message router into the default task service factory', async () => {

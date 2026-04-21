@@ -8,6 +8,13 @@ type ReplyRelayDependencies = {
   taskConversationService: Pick<TaskConversationService, 'ingest'>;
   taskContextBindingService: Pick<TaskContextBindingService, 'getBindingById' | 'getActiveBinding'>;
   taskParticipationService: Pick<TaskParticipationService, 'getParticipantById' | 'getRuntimeSessionByParticipant'>;
+  runtimeTargetLookup?: {
+    findRuntimeTarget(runtimeTargetRef: string): {
+      runtime_target_ref: string;
+      display_name: string | null;
+      presentation_mode: 'headless' | 'im_presented';
+    } | null;
+  };
   now?: () => Date;
 };
 
@@ -58,6 +65,8 @@ export class CcConnectBridgeReplyRelayService {
     if (!binding) {
       return;
     }
+    const runtimeTarget = this.options.runtimeTargetLookup?.findRuntimeTarget(participant.agent_ref) ?? null;
+    const displayName = runtimeTarget?.display_name ?? participant.agent_ref;
 
     const observedAt = this.now().toISOString();
     try {
@@ -87,13 +96,18 @@ export class CcConnectBridgeReplyRelayService {
       direction: 'outbound',
       author_kind: 'agent',
       author_ref: participant.agent_ref,
-      display_name: participant.agent_ref,
+      display_name: displayName,
       body: event.content,
       body_format: event.format === 'markdown' ? 'markdown' : 'plain_text',
       occurred_at: observedAt,
       metadata: {
         runtime_provider: 'cc-connect',
         runtime_session_ref: event.session_key,
+        ...(runtimeTarget ? {
+          runtime_target_ref: runtimeTarget.runtime_target_ref,
+          runtime_target_display_name: displayName,
+          presentation_mode: runtimeTarget.presentation_mode,
+        } : {}),
         reply_ctx: event.reply_ctx,
       },
     });
