@@ -297,7 +297,7 @@ function normalizeRuntimeFlavor(agentType: string | null) {
   if (normalized === 'codex') {
     return 'codex';
   }
-  if (normalized === 'claude' || normalized === 'claude-code') {
+  if (normalized === 'claude' || normalized === 'claude-code' || normalized === 'claudecode') {
     return 'claude-code';
   }
   return normalized;

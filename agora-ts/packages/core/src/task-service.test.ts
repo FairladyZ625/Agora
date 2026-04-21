@@ -910,6 +910,85 @@ describe('task service', () => {
     });
   });
 
+  it('resolves a cross-flavor placeholder matrix inside one project', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projectService = createProjectServiceFromDb(db);
+    projectService.createProject({
+      id: 'proj-cross-flavor-matrix',
+      name: 'Cross Flavor Matrix',
+      metadata: {
+        runtime_targets: {
+          flavors: {
+            codex: 'cc-connect:project-a-codex',
+            'claude-code': 'cc-connect:project-a-claude',
+          },
+        },
+      },
+    });
+    const service = createTaskServiceFromDb(db, {
+      templatesDir,
+      projectService,
+      taskIdGenerator: () => 'OC-PROJECT-RUNTIME-MATRIX-1',
+    });
+
+    const task = service.createTask({
+      title: 'Cross flavor matrix',
+      type: 'custom',
+      creator: 'archon',
+      description: 'resolve developer/reviewer placeholders to different runtime flavors',
+      priority: 'normal',
+      project_id: 'proj-cross-flavor-matrix',
+      team_override: {
+        members: [
+          {
+            role: 'developer',
+            agentId: 'developer',
+            member_kind: 'citizen',
+            model_preference: 'codex',
+          },
+          {
+            role: 'reviewer',
+            agentId: 'reviewer',
+            member_kind: 'citizen',
+            model_preference: 'claude-code',
+          },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'dispatch',
+            mode: 'execute',
+            execution_kind: 'citizen_execute',
+            roster: { include_roles: ['developer', 'reviewer'] },
+            gate: { type: 'command' },
+          },
+        ],
+      },
+    });
+
+    expect(task.team.members).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        role: 'developer',
+        agentId: 'cc-connect:project-a-codex',
+        runtime_target_ref: 'cc-connect:project-a-codex',
+        runtime_flavor: 'codex',
+        runtime_selection_source: 'project_flavor_default',
+        runtime_selection_reason: 'project runtime_targets.flavors.codex',
+      }),
+      expect.objectContaining({
+        role: 'reviewer',
+        agentId: 'cc-connect:project-a-claude',
+        runtime_target_ref: 'cc-connect:project-a-claude',
+        runtime_flavor: 'claude-code',
+        runtime_selection_source: 'project_flavor_default',
+        runtime_selection_reason: 'project runtime_targets.flavors.claude-code',
+      }),
+    ]));
+  });
+
   it('retains branch and complete edges in task blueprints for graph-backed workflows', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
