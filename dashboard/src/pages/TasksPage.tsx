@@ -103,6 +103,16 @@ function formatStageRosterRules(status: TaskStatus | null | undefined, copy: Ret
   return parts.length > 0 ? parts.join(' / ') : copy.stageRosterRulesNone;
 }
 
+function hasRuntimeSelectionDetails(status: TaskStatus | null | undefined) {
+  const members = status?.task.teamMembers ?? [];
+  return members.some((member) => (
+    Boolean(member.runtime_target_ref)
+    || Boolean(member.runtime_flavor)
+    || Boolean(member.runtime_selection_source)
+    || Boolean(member.runtime_selection_reason)
+  ));
+}
+
 function TaskBlueprintSection({
   blueprint,
   copy,
@@ -1492,6 +1502,52 @@ export function TasksPage() {
                   </div>
                 ) : (
                   <p className="type-body-sm mt-4">{tasksPageCopy.stageRosterRulesNone}</p>
+                )}
+              </section>
+
+              <section className="sheet-section">
+                <h4 className="section-title">{tasksPageCopy.runtimeSelectionTitle}</h4>
+                {hasRuntimeSelectionDetails(routeTaskStatus) ? (
+                  <div className="mt-4 space-y-3">
+                    {(routeTaskStatus?.task.teamMembers ?? [])
+                      .filter((member) => (
+                        member.runtime_target_ref
+                        || member.runtime_flavor
+                        || member.runtime_selection_source
+                        || member.runtime_selection_reason
+                      ))
+                      .map((member) => (
+                        <div key={`${member.role}-${member.agentId}`} className="data-row">
+                          <div className="min-w-0 flex-1">
+                            <p className="type-label-sm">{member.role} / {displayAgentId(member.agentId)}</p>
+                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                              {member.runtime_target_ref ? (
+                                <span className="type-text-xs">
+                                  {tasksPageCopy.runtimeSelectionTargetLabel}: {displayAgentId(member.runtime_target_ref)}
+                                </span>
+                              ) : null}
+                              {member.runtime_flavor ? (
+                                <span className="type-text-xs">
+                                  {tasksPageCopy.runtimeSelectionFlavorLabel}: {member.runtime_flavor}
+                                </span>
+                              ) : null}
+                              {member.runtime_selection_source ? (
+                                <span className="type-text-xs">
+                                  {tasksPageCopy.runtimeSelectionSourceLabel}: {member.runtime_selection_source}
+                                </span>
+                              ) : null}
+                            </div>
+                            {member.runtime_selection_reason ? (
+                              <p className="type-body-sm mt-2">
+                                {tasksPageCopy.runtimeSelectionReasonLabel}: {member.runtime_selection_reason}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <p className="type-body-sm mt-4">{tasksPageCopy.runtimeSelectionEmpty}</p>
                 )}
               </section>
 

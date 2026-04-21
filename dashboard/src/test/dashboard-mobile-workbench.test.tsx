@@ -190,6 +190,61 @@ describe('dashboard mobile workbench routes', () => {
     expect(within(detailSheet).getByText(/^opus$/)).toBeInTheDocument();
   });
 
+  it('renders runtime selection breadcrumbs in the task detail sheet when task members include them', async () => {
+    const taskStatus = getMockTaskStatus('TSK-001');
+    if (!taskStatus) {
+      throw new Error('mock task status missing for TSK-001');
+    }
+    taskStoreState.selectedTaskId = 'TSK-001';
+    taskStoreState.selectedTaskStatus = {
+      ...taskStatus,
+      task: {
+        ...taskStatus.task,
+        teamMembers: [
+          {
+            role: 'developer',
+            agentId: 'cc-connect:agora-codex-immediate',
+            model_preference: 'codex',
+            runtime_target_ref: 'cc-connect:agora-codex-immediate',
+            runtime_flavor: 'codex',
+            runtime_selection_source: 'project_flavor_default',
+            runtime_selection_reason: 'project runtime_targets.flavors.codex',
+          },
+          {
+            role: 'reviewer',
+            agentId: 'cc-connect:agora-claude',
+            model_preference: 'claude-code',
+            runtime_target_ref: 'cc-connect:agora-claude',
+            runtime_flavor: 'claude-code',
+            runtime_selection_source: 'project_flavor_default',
+            runtime_selection_reason: 'project runtime_targets.flavors.claude-code',
+          },
+        ],
+      },
+    };
+
+    renderWithRoutes(
+      ['/tasks/TSK-001'],
+      <>
+        <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/tasks/:taskId" element={<TasksPage />} />
+      </>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: '任务详情面板' })).toBeInTheDocument();
+    });
+
+    const detailSheet = screen.getByRole('dialog', { name: '任务详情面板' });
+    expect(within(detailSheet).getByText('运行时选择')).toBeInTheDocument();
+    expect(within(detailSheet).getByText('developer / cc-connect:agora-codex-immediate')).toBeInTheDocument();
+    expect(within(detailSheet).getByText('reviewer / cc-connect:agora-claude')).toBeInTheDocument();
+    expect(within(detailSheet).getByText('target: cc-connect:agora-codex-immediate')).toBeInTheDocument();
+    expect(within(detailSheet).getByText('flavor: claude-code')).toBeInTheDocument();
+    expect(within(detailSheet).getAllByText('source: project_flavor_default')).toHaveLength(2);
+    expect(within(detailSheet).getByText('reason: project runtime_targets.flavors.claude-code')).toBeInTheDocument();
+  });
+
   it('opens review detail as a sheet on mobile instead of keeping the inspector mounted inline', async () => {
     taskStoreState.selectedTaskId = 'TSK-002';
     taskStoreState.selectedTaskStatus = getMockTaskStatus('TSK-002');

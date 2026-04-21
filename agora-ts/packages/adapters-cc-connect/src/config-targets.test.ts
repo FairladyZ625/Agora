@@ -135,6 +135,29 @@ work_dir = "/repo/agora"
     });
   });
 
+  it('normalizes claudecode agent types into runtime flavors', () => {
+    const targets = loadCcConnectProjectTargets({
+      env: { AGORA_CC_CONNECT_CONFIG_PATHS: '/tmp/cc-connect.toml' },
+      exists: () => true,
+      readFile: () => `
+[[projects]]
+name = "agora-claude"
+
+[projects.agent]
+type = "claudecode"
+
+[projects.agent.options]
+work_dir = "/repo/agora"
+`,
+    });
+
+    expect(targets[0]).toMatchObject({
+      projectName: 'agora-claude',
+      agentType: 'claudecode',
+      runtimeFlavor: 'claude-code',
+    });
+  });
+
   it('builds Discord native mention aliases for cc-connect projects', () => {
     const resolveMentions = createCcConnectDiscordMentionResolver([
       {

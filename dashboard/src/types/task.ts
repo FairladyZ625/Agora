@@ -47,6 +47,10 @@ export interface Task {
     role: string;
     agentId: string;
     model_preference: string;
+    runtime_target_ref?: string | null;
+    runtime_flavor?: string | null;
+    runtime_selection_source?: string | null;
+    runtime_selection_reason?: string | null;
   }>;
   scheduler: unknown;
   scheduler_snapshot: unknown;

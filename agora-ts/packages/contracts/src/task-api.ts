@@ -104,6 +104,14 @@ export const teamMemberSchema = z.object({
 });
 export type TeamMemberDto = z.infer<typeof teamMemberSchema>;
 
+export const taskTeamMemberSchema = teamMemberSchema.extend({
+  runtime_target_ref: z.string().optional(),
+  runtime_flavor: z.string().nullable().optional(),
+  runtime_selection_source: z.string().optional(),
+  runtime_selection_reason: z.string().optional(),
+});
+export type TaskTeamMemberDto = z.infer<typeof taskTeamMemberSchema>;
+
 export const teamSchema = z.object({
   members: z.array(teamMemberSchema),
 }).superRefine((value, ctx) => {
@@ -117,6 +125,20 @@ export const teamSchema = z.object({
   }
 });
 export type TeamDto = z.infer<typeof teamSchema>;
+
+export const taskTeamSchema = z.object({
+  members: z.array(taskTeamMemberSchema),
+}).superRefine((value, ctx) => {
+  const controllerMembers = value.members.filter((member) => member.member_kind === 'controller');
+  if (controllerMembers.length > 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'team must not declare more than one controller',
+      path: ['members'],
+    });
+  }
+});
+export type TaskTeamDto = z.infer<typeof taskTeamSchema>;
 
 export const workflowGateSchema = z.object({
   type: workflowGateTypeSchema.optional(),
@@ -184,7 +206,7 @@ export const taskBlueprintSchema = z.object({
   nodes: z.array(taskBlueprintNodeSchema),
   edges: z.array(taskBlueprintEdgeSchema),
   artifact_contracts: z.array(taskBlueprintArtifactContractSchema),
-  role_bindings: z.array(teamMemberSchema),
+  role_bindings: z.array(taskTeamMemberSchema),
 });
 export type TaskBlueprintDto = z.infer<typeof taskBlueprintSchema>;
 
@@ -283,7 +305,7 @@ export const taskSchema = z.object({
   controller_ref: z.string().nullable().optional(),
   current_stage: z.string().nullable(),
   skill_policy: taskSkillPolicySchema.nullable().optional(),
-  team: teamSchema.nullable(),
+  team: taskTeamSchema.nullable(),
   workflow: workflowSchema.nullable(),
   control: taskControlSchema.nullable().optional(),
   scheduler: jsonValueSchema,

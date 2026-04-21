@@ -3,6 +3,13 @@ import { Command } from 'commander';
 import { CcConnectManagementService } from '../packages/core/src/index.js';
 import { loadCcConnectProjectTargets } from '../packages/adapters-cc-connect/src/index.js';
 import { createServerRuntime } from '../apps/server/src/runtime.js';
+import {
+  buildLiveSmokeProjectMetadata,
+  buildLiveSmokeTaskInput,
+  parseLiveSmokeTargets,
+  resolveConfiguredLiveSmokeTargets,
+  resolveCcConnectConfigPathsEnv,
+} from './smoke-external-participant-dispatch-live-utils.js';
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -31,13 +38,22 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
 async function main() {
   const program = new Command();
   program
     .option('--config <path>', 'Agora config path', '/Users/lizeyu/.agora/agora.json')
     .option('--cc-connect-config <path>', 'cc-connect config path', '/Users/lizeyu/.cc-connect/config-immediate.toml')
+    .option('--cc-connect-configs <paths>', 'comma-separated cc-connect config paths for multi-target smoke')
     .option('--agent-ref <ref>', 'external participant agent ref', 'cc-connect:agora-codex-immediate')
     .option('--project <name>', 'cc-connect project name', 'agora-codex-immediate')
+    .option('--role <role>', 'task role for the legacy single-target path', 'developer')
+    .option('--targets-json <json>', 'JSON array of target specs for matrix smoke')
     .option('--task-id <id>', 'task id override')
     .option('--timeout-ms <ms>', 'overall wait timeout', '60000')
     .option('--poll-ms <ms>', 'poll interval', '1500')
@@ -49,8 +65,11 @@ async function main() {
   const options = program.opts<{
     config: string;
     ccConnectConfig: string;
+    ccConnectConfigs?: string;
     agentRef: string;
     project: string;
+    role: string;
+    targetsJson?: string;
     taskId?: string;
     timeoutMs: string;
     pollMs: string;
@@ -60,10 +79,25 @@ async function main() {
   }>();
 
   process.env.AGORA_CONFIG_PATH = options.config;
-  process.env.AGORA_CC_CONNECT_CONFIG_PATHS = options.ccConnectConfig;
+  process.env.AGORA_CC_CONNECT_CONFIG_PATHS = resolveCcConnectConfigPathsEnv({
+    ccConnectConfig: options.ccConnectConfig,
+    ccConnectConfigs: options.ccConnectConfigs,
+  });
+
+  const targets = parseLiveSmokeTargets({
+    targetsJson: options.targetsJson,
+    agentRef: options.agentRef,
+    project: options.project,
+    role: options.role,
+    expectReply: options.expectReply,
+  });
 
   const taskId = options.taskId ?? `OC-H9B-LIVE-${Date.now()}`;
-  const goal = `live external participant dispatch smoke ${taskId}`;
+  const agoraProjectId = `h9-entry-cutover-${taskId.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`;
+  const goal = targets.length > 1
+    ? `live external participant dispatch multi-target smoke ${taskId}`
+    : `live external participant dispatch smoke ${taskId}`;
+  const configuredTargets = resolveConfiguredLiveSmokeTargets(targets, loadCcConnectProjectTargets());
   const timeoutMs = Number(options.timeoutMs);
   const pollMs = Number(options.pollMs);
   const replyTimeoutMs = Number(options.replyTimeoutMs);
@@ -75,135 +109,161 @@ async function main() {
   try {
     await maybeReady?.whenReady?.();
 
-    const task = runtime.taskService.createTask({
-      title: `H9B live external dispatch ${taskId}`,
-      type: 'custom',
-      creator: 'archon',
-      description: goal,
-      priority: 'normal',
-      team_override: {
-        members: [
-          {
-            role: 'developer',
-            agentId: options.agentRef,
-            member_kind: 'citizen',
-            model_preference: 'cc-connect',
-          },
-        ],
-      },
-      workflow_override: {
-        type: 'custom',
-        stages: [
-          {
-            id: 'dispatch',
-            mode: 'execute',
-            execution_kind: 'citizen_execute',
-            allowed_actions: ['execute'],
-            roster: { include_roles: ['developer'] },
-            gate: { type: 'command' },
-          },
-        ],
-      },
-      im_target: {
-        provider: 'discord',
-        visibility: 'private',
-        participant_refs: [options.agentRef],
-      },
+    runtime.projectService.createProject({
+      id: agoraProjectId,
+      name: `H9 Entry Cutover ${taskId}`,
+      metadata: buildLiveSmokeProjectMetadata(configuredTargets),
     });
+
+    const task = runtime.taskService.createTask(buildLiveSmokeTaskInput({
+      taskId,
+      projectId: agoraProjectId,
+      goal,
+      configuredTargets,
+    }));
 
     const actualTaskId = task.id;
     await runtime.taskService.drainBackgroundOperations();
+    const taskStatus = runtime.taskService.getTaskStatus(actualTaskId);
     const binding = await waitFor('task context binding', () => runtime.taskContextBindingService.getActiveBinding(actualTaskId), timeoutMs, pollMs);
     bindingId = binding.id;
     threadRef = binding.thread_ref;
     assert(threadRef, 'expected Discord thread ref');
 
-    const participant = await waitFor('external participant binding', () => (
-      runtime.taskParticipationService.listParticipants(actualTaskId)
-        .find((item) => item.agent_ref === options.agentRef) ?? null
-    ), timeoutMs, pollMs);
-    const expectedSessionKey = `agora-${binding.im_provider}:${threadRef}:${participant.id}`;
+    const management = new CcConnectManagementService();
+    const results = await Promise.all(configuredTargets.map(async ({ spec: targetSpec, target }) => {
+      const member = taskStatus?.task.team?.members.find((item) => item.role === targetSpec.role);
+      assert(member, `expected ${targetSpec.role} team member in task status`);
+      assert(member.agentId === targetSpec.agentRef, `expected project runtime target resolution to pick ${targetSpec.agentRef}`);
+      assert(member.runtime_target_ref === targetSpec.agentRef, `expected runtime target ref for ${targetSpec.role}`);
+      assert(member.runtime_flavor === target.runtimeFlavor, `expected runtime flavor ${target.runtimeFlavor} for ${targetSpec.role}`);
+      assert(member.runtime_selection_source === 'project_flavor_default', `expected runtime selection source for ${targetSpec.role}`);
+      assert(
+        member.runtime_selection_reason === `project runtime_targets.flavors.${target.runtimeFlavor}`,
+        `expected runtime selection reason for ${targetSpec.role}`,
+      );
 
-    const runtimeSession = await waitFor('cc-connect runtime session binding', () => (
-      (() => {
+      const participant = await waitFor(`external participant binding (${targetSpec.agentRef})`, () => (
+        runtime.taskParticipationService.listParticipants(actualTaskId)
+          .find((item) => item.agent_ref === targetSpec.agentRef) ?? null
+      ), timeoutMs, pollMs);
+      const expectedSessionKey = `agora-${binding.im_provider}:${threadRef}:${participant.id}`;
+
+      const runtimeSession = await waitFor(`cc-connect runtime session binding (${targetSpec.agentRef})`, () => {
         const session = runtime.taskParticipationService.getRuntimeSessionByParticipant(participant.id);
         return session?.runtime_provider === 'cc-connect' && session.runtime_session_ref === expectedSessionKey
           ? session
           : null;
-      })()
-    ), timeoutMs, pollMs);
-    assert(runtimeSession.runtime_provider === 'cc-connect', `expected cc-connect runtime session, got ${runtimeSession.runtime_provider}`);
+      }, timeoutMs, pollMs);
+      assert(runtimeSession.runtime_provider === 'cc-connect', `expected cc-connect runtime session, got ${runtimeSession.runtime_provider}`);
 
-    const target = loadCcConnectProjectTargets()
-      .find((candidate) => candidate.projectName === options.project);
-    assert(target?.management.enabled && target.management.baseUrl && target.management.token, `cc-connect management target not configured for ${options.project}`);
+      const sessionDetail = await waitFor(`cc-connect session history containing role brief (${targetSpec.agentRef})`, async () => {
+        const sessions = await management.listSessions({
+          configPath: target.configPath,
+          managementBaseUrl: target.management.baseUrl!,
+          managementToken: target.management.token!,
+          project: target.projectName,
+        });
+        const session = sessions.find((candidate) => candidate.session_key === runtimeSession.runtime_session_ref);
+        if (!session) {
+          return null;
+        }
+        const detail = await management.getSession({
+          configPath: target.configPath,
+          managementBaseUrl: target.management.baseUrl!,
+          managementToken: target.management.token!,
+          project: target.projectName,
+          sessionId: session.id,
+          historyLimit: 20,
+        });
+        const matched = detail.history.some((message) => (
+          message.content.includes(goal)
+          && message.content.includes(`角色简报 ${targetSpec.agentRef}`)
+          && message.content.includes(`Runtime Flavor: ${target.runtimeFlavor}`)
+          && message.content.includes('选择来源: project_flavor_default')
+          && message.content.includes(`选择原因: project runtime_targets.flavors.${target.runtimeFlavor}`)
+        ));
+        return matched ? detail : null;
+      }, timeoutMs, pollMs);
 
-    const management = new CcConnectManagementService();
-    const sessionDetail = await waitFor('cc-connect session history containing role brief', async () => {
-      const sessions = await management.listSessions({
-        configPath: target.configPath,
-        managementBaseUrl: target.management.baseUrl!,
-        managementToken: target.management.token!,
-        project: target.projectName,
-      });
-      const session = sessions.find((candidate) => candidate.session_key === runtimeSession.runtime_session_ref);
-      if (!session) {
-        return null;
+      let relayHealth: Record<string, unknown> | null = null;
+      let replyConversationEntryId: string | null = null;
+      let replyDisplayName: string | null = null;
+      let replyPresentationMode: string | null = null;
+      if (targetSpec.expectReply) {
+        const nonce = `H9W3_RELAY_${targetSpec.role}_${Date.now()}`;
+        await management.sendMessage({
+          configPath: target.configPath,
+          managementBaseUrl: target.management.baseUrl!,
+          managementToken: target.management.token!,
+          project: target.projectName,
+          sessionKey: runtimeSession.runtime_session_ref,
+          message: `Reply with exactly this token and no extra prose: ${nonce}`,
+        });
+        const relayed = await waitFor(`cc-connect reply relay conversation entry (${targetSpec.agentRef})`, () => {
+          const entries = runtime.taskConversationService.listByTask(actualTaskId);
+          return entries.find((entry) => (
+            entry.direction === 'outbound'
+            && entry.author_kind === 'agent'
+            && entry.author_ref === targetSpec.agentRef
+            && entry.body.includes(nonce)
+          )) ?? null;
+        }, replyTimeoutMs, pollMs);
+        const replyMetadata = asRecord(relayed.metadata);
+        assert(replyMetadata.runtime_provider === 'cc-connect', `expected relay metadata runtime provider, got ${JSON.stringify(replyMetadata)}`);
+        assert(replyMetadata.runtime_session_ref === runtimeSession.runtime_session_ref, `expected relay metadata runtime session, got ${JSON.stringify(replyMetadata)}`);
+        assert(replyMetadata.runtime_target_ref === targetSpec.agentRef, `expected relay metadata runtime target, got ${JSON.stringify(replyMetadata)}`);
+        assert(replyMetadata.reply_ctx, `expected relay metadata reply ctx, got ${JSON.stringify(replyMetadata)}`);
+        assert(
+          replyMetadata.presentation_mode === 'headless' || replyMetadata.presentation_mode === 'im_presented',
+          `expected relay metadata presentation mode, got ${JSON.stringify(replyMetadata)}`,
+        );
+        assert(
+          typeof relayed.display_name === 'string' && relayed.display_name.length > 0,
+          `expected relayed display name, got ${JSON.stringify(relayed)}`,
+        );
+        assert(
+          replyMetadata.runtime_target_display_name === relayed.display_name,
+          `expected relay metadata display name to match relayed entry, got ${JSON.stringify(replyMetadata)}`,
+        );
+        replyConversationEntryId = relayed.id;
+        replyDisplayName = relayed.display_name;
+        replyPresentationMode = String(replyMetadata.presentation_mode);
+        relayHealth = readRelayHealth(runtime.liveSessionStore.get(runtimeSession.runtime_session_ref)?.metadata);
+        assert(relayHealth?.discord_publish_status === 'succeeded', `expected relay health publish success, got ${JSON.stringify(relayHealth)}`);
       }
-      const detail = await management.getSession({
-        configPath: target.configPath,
-        managementBaseUrl: target.management.baseUrl!,
-        managementToken: target.management.token!,
-        project: target.projectName,
-        sessionId: session.id,
-        historyLimit: 20,
-      });
-      const matched = detail.history.some((message) => (
-        message.content.includes(goal)
-        && message.content.includes(`角色简报 ${options.agentRef}`)
-      ));
-      return matched ? detail : null;
-    }, timeoutMs, pollMs);
 
-    let relayHealth: Record<string, unknown> | null = null;
-    let replyConversationEntryId: string | null = null;
-    if (options.expectReply) {
-      const nonce = `H9D_RELAY_${Date.now()}`;
-      await management.sendMessage({
-        configPath: target.configPath,
-        managementBaseUrl: target.management.baseUrl!,
-        managementToken: target.management.token!,
-        project: target.projectName,
-        sessionKey: runtimeSession.runtime_session_ref,
-        message: `Reply with exactly this token and no extra prose: ${nonce}`,
-      });
-      const relayed = await waitFor('cc-connect reply relay conversation entry', () => {
-        const entries = runtime.taskConversationService.listByTask(actualTaskId);
-        return entries.find((entry) => (
-          entry.direction === 'outbound'
-          && entry.author_kind === 'agent'
-          && entry.author_ref === options.agentRef
-          && entry.body.includes(nonce)
-        )) ?? null;
-      }, replyTimeoutMs, pollMs);
-      replyConversationEntryId = relayed.id;
-      relayHealth = readRelayHealth(runtime.liveSessionStore.get(runtimeSession.runtime_session_ref)?.metadata);
-      assert(relayHealth?.discord_publish_status === 'succeeded', `expected relay health publish success, got ${JSON.stringify(relayHealth)}`);
-    }
+      return {
+        role: targetSpec.role,
+        external_agent_ref: targetSpec.agentRef,
+        project: targetSpec.project,
+        runtime_target_ref: member.runtime_target_ref,
+        runtime_flavor: member.runtime_flavor,
+        runtime_selection_source: member.runtime_selection_source,
+        runtime_selection_reason: member.runtime_selection_reason,
+        runtime_session_ref: runtimeSession.runtime_session_ref,
+        cc_connect_session_id: sessionDetail.id,
+        cc_connect_history_count: sessionDetail.history_count,
+        ...(targetSpec.expectReply ? {
+          reply_conversation_entry_id: replyConversationEntryId,
+          reply_display_name: replyDisplayName,
+          reply_presentation_mode: replyPresentationMode,
+          relay_health: relayHealth,
+        } : {}),
+      };
+    }));
 
     console.log(JSON.stringify({
       ok: true,
       requested_task_id: taskId,
       task_id: actualTaskId,
+      project_id: agoraProjectId,
       thread_ref: threadRef,
-      external_agent_ref: options.agentRef,
-      runtime_session_ref: runtimeSession.runtime_session_ref,
-      cc_connect_session_id: sessionDetail.id,
-      cc_connect_history_count: sessionDetail.history_count,
-      ...(options.expectReply ? {
-        reply_conversation_entry_id: replyConversationEntryId,
-        relay_health: relayHealth,
-      } : {}),
+      target_count: results.length,
+      targets: results,
+      ...(results.length === 1
+        ? results[0]
+        : {}),
       cleanup: options.keepThread ? 'kept' : 'archived',
     }, null, 2));
   } finally {

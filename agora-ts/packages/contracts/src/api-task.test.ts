@@ -97,6 +97,61 @@ describe('task api contracts', () => {
     ).toBe('overlay_delta');
   });
 
+  it('parses task status responses with runtime target selection metadata on team members', () => {
+    expect(
+      taskStatusSchema.parse({
+        task: {
+          id: 'OC-RT-001',
+          version: 1,
+          title: 'runtime target metadata',
+          description: null,
+          type: 'coding',
+          priority: 'normal',
+          creator: 'archon',
+          locale: 'zh-CN',
+          project_id: 'proj-runtime',
+          state: 'active',
+          archive_status: null,
+          current_stage: 'build',
+          controller_ref: null,
+          authority: null,
+          skill_policy: null,
+          created_at: '2026-04-21T12:00:00.000Z',
+          updated_at: '2026-04-21T12:00:00.000Z',
+          team: {
+            members: [
+              {
+                role: 'developer',
+                agentId: 'cc-connect:agora-codex',
+                member_kind: 'citizen',
+                model_preference: 'codex',
+                runtime_target_ref: 'cc-connect:agora-codex',
+                runtime_flavor: 'codex',
+                runtime_selection_source: 'project_flavor_default',
+                runtime_selection_reason: 'project runtime_targets.flavors.codex',
+              },
+            ],
+          },
+          workflow: {
+            type: 'custom',
+            stages: [
+              { id: 'build', mode: 'execute', gate: { type: 'command' } },
+            ],
+          },
+          control: null,
+          scheduler: null,
+          scheduler_snapshot: null,
+          discord: null,
+          metrics: null,
+          error_detail: null,
+        },
+        flow_log: [],
+        progress_log: [],
+        subtasks: [],
+      }).task.team?.members[0]?.runtime_selection_reason,
+    ).toBe('project runtime_targets.flavors.codex');
+  });
+
   it('parses create task payloads with member kind hints for orchestration control', () => {
     expect(
       createTaskRequestSchema.parse({

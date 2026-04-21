@@ -147,6 +147,7 @@ describe('CcConnectBridgeReplyRelayService', () => {
       display_name: 'Codex Review Bot',
       body: 'Done. Here is the summary.',
       metadata: expect.objectContaining({
+        runtime_target_ref: 'cc-connect:agora-codex',
         presentation_mode: 'headless',
         runtime_target_display_name: 'Codex Review Bot',
       }),

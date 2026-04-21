@@ -371,7 +371,18 @@ describe('TaskBroadcastService', () => {
           team: {
             members: [
               { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning', agent_origin: 'agora_managed', briefing_mode: 'overlay_delta' },
-              { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'balanced', agent_origin: 'user_managed', briefing_mode: 'overlay_full' },
+              {
+                role: 'developer',
+                agentId: 'sonnet',
+                member_kind: 'citizen',
+                model_preference: 'balanced',
+                agent_origin: 'user_managed',
+                briefing_mode: 'overlay_full',
+                runtime_target_ref: 'cc-connect:agora-codex',
+                runtime_flavor: 'codex',
+                runtime_selection_source: 'project_flavor_default',
+                runtime_selection_reason: 'project runtime_targets.flavors.codex',
+              },
             ],
           },
           workflow: {
@@ -414,6 +425,10 @@ describe('TaskBroadcastService', () => {
       expect(opusBrief?.body).toContain(join(workspaceDir, '05-agents', 'opus', '00-role-brief.md'));
       expect(opusBrief?.body).not.toContain('阅读角色文档:');
       expect(sonnetBrief?.body).toContain('简报模式: overlay_full');
+      expect(sonnetBrief?.body).toContain('Runtime Target: cc-connect:agora-codex');
+      expect(sonnetBrief?.body).toContain('Runtime Flavor: codex');
+      expect(sonnetBrief?.body).toContain('选择来源: project_flavor_default');
+      expect(sonnetBrief?.body).toContain('选择原因: project runtime_targets.flavors.codex');
       expect(sonnetBrief?.body).toContain('阅读角色文档:');
       expect(sonnetBrief?.body).toContain('refactoring-ui -> /tmp/skills/refactoring-ui/SKILL.md');
     } finally {

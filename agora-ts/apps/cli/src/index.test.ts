@@ -3222,6 +3222,49 @@ token = "MTQ5MTc4MTM0NDY2NDIyNzk0Mg.fake.fake"
     expect(stdout.value).toContain('active');
   });
 
+  it('shows runtime selection details in task status output when present', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projectService = createProjectServiceFromDb(db);
+    projectService.createProject({
+      id: 'proj-runtime-selection',
+      name: 'Runtime Selection',
+      metadata: {
+        runtime_targets: {
+          flavors: {
+            codex: 'cc-connect:agora-codex-immediate',
+            'claude-code': 'cc-connect:agora-claude',
+          },
+        },
+      },
+    });
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      projectService,
+      taskIdGenerator: () => 'OC-300R',
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+
+    await program.parseAsync([
+      'create',
+      '实现 runtime selection explainability',
+      '--type', 'coding',
+      '--project-id', 'proj-runtime-selection',
+      '--team-json', '{"members":[{"role":"developer","agentId":"developer","member_kind":"citizen","model_preference":"codex"},{"role":"reviewer","agentId":"reviewer","member_kind":"citizen","model_preference":"claude-code"}]}',
+      '--workflow-json', '{"type":"custom","stages":[{"id":"dispatch","mode":"execute","execution_kind":"citizen_execute","roster":{"include_roles":["developer","reviewer"]},"gate":{"type":"command"}}]}',
+    ], { from: 'user' });
+    await program.parseAsync(['status', 'OC-300R'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Runtime Selection:');
+    expect(stdout.value).toContain('developer -> cc-connect:agora-codex-immediate');
+    expect(stdout.value).toContain('reviewer -> cc-connect:agora-claude');
+    expect(stdout.value).toContain('source=project_flavor_default');
+    expect(stdout.value).toContain('reason=project runtime_targets.flavors.claude-code');
+  });
+
   it('creates tasks with team/workflow/im-target overrides through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

@@ -191,6 +191,9 @@
 - 交付总结 / 复盘：
 
   - 先读 [docs/11-REFERENCE/walkthrough-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/walkthrough-standard.md)
+- 私有聚合仓 / `Agora_Private` 同步：
+
+  - 先读 [docs/11-REFERENCE/private-aggregate-repo-sync-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/private-aggregate-repo-sync-standard.md)
 - 其他工程质量门与通用工程规则：
 
   - 先读 [docs/11-REFERENCE/engineering-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/engineering-standard.md)
@@ -227,5 +230,10 @@
 ## 8. Docs / Git Notes
 
 - `docs/` 是独立 Git 仓库；docs 变更只在 docs 仓提交。
+- `Agora_Private`（`git@github.com:FairladyZ625/Agora_Private.git`）是私有聚合镜像仓：
+  - 根目录同步代码仓
+  - `docs/` 子目录同步 docs 仓
+  - 它不是新的 SSoT；源仓仍是 `Agora` 与 `agora_doc`
+  - 默认使用 [scripts/sync-agora-private.sh](/Users/lizeyu/Projects/Agora/scripts/sync-agora-private.sh) 同步，详细规则见 [docs/11-REFERENCE/private-aggregate-repo-sync-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/private-aggregate-repo-sync-standard.md)
 - 文档与代码一样要求收敛：不要新增平行总表、平行进度总览、平行状态矩阵。
 - root `AGENTS.md` 只保留入口协议；详细规则统一下沉到 `docs/11-REFERENCE/`。
