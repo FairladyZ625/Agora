@@ -31,6 +31,12 @@ function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
 async function main() {
   const program = new Command();
   program
@@ -213,9 +219,47 @@ async function main() {
           && entry.body.includes(nonce)
         )) ?? null;
       }, replyTimeoutMs, pollMs);
+      const replyMetadata = asRecord(relayed.metadata);
+      assert(replyMetadata.runtime_provider === 'cc-connect', `expected relay metadata runtime provider, got ${JSON.stringify(replyMetadata)}`);
+      assert(replyMetadata.runtime_session_ref === runtimeSession.runtime_session_ref, `expected relay metadata runtime session, got ${JSON.stringify(replyMetadata)}`);
+      assert(replyMetadata.runtime_target_ref === options.agentRef, `expected relay metadata runtime target, got ${JSON.stringify(replyMetadata)}`);
+      assert(replyMetadata.reply_ctx, `expected relay metadata reply ctx, got ${JSON.stringify(replyMetadata)}`);
+      assert(
+        replyMetadata.presentation_mode === 'headless' || replyMetadata.presentation_mode === 'im_presented',
+        `expected relay metadata presentation mode, got ${JSON.stringify(replyMetadata)}`,
+      );
+      assert(
+        typeof relayed.display_name === 'string' && relayed.display_name.length > 0,
+        `expected relayed display name, got ${JSON.stringify(relayed)}`,
+      );
+      assert(
+        replyMetadata.runtime_target_display_name === relayed.display_name,
+        `expected relay metadata display name to match relayed entry, got ${JSON.stringify(replyMetadata)}`,
+      );
       replyConversationEntryId = relayed.id;
       relayHealth = readRelayHealth(runtime.liveSessionStore.get(runtimeSession.runtime_session_ref)?.metadata);
       assert(relayHealth?.discord_publish_status === 'succeeded', `expected relay health publish success, got ${JSON.stringify(relayHealth)}`);
+      console.log(JSON.stringify({
+        ok: true,
+        requested_task_id: taskId,
+        task_id: actualTaskId,
+        project_id: agoraProjectId,
+        thread_ref: threadRef,
+        external_agent_ref: options.agentRef,
+        runtime_target_ref: member.runtime_target_ref,
+        runtime_flavor: member.runtime_flavor,
+        runtime_selection_source: member.runtime_selection_source,
+        runtime_selection_reason: member.runtime_selection_reason,
+        runtime_session_ref: runtimeSession.runtime_session_ref,
+        cc_connect_session_id: sessionDetail.id,
+        cc_connect_history_count: sessionDetail.history_count,
+        reply_conversation_entry_id: relayed.id,
+        reply_display_name: relayed.display_name,
+        reply_presentation_mode: replyMetadata.presentation_mode,
+        relay_health: relayHealth,
+        cleanup: options.keepThread ? 'kept' : 'archived',
+      }, null, 2));
+      return;
     }
 
     console.log(JSON.stringify({

@@ -305,6 +305,18 @@ async function main() {
       taskConversationService,
       taskContextBindingService,
       taskParticipationService,
+      runtimeTargetLookup: {
+        findRuntimeTarget(runtimeTargetRef: string) {
+          if (runtimeTargetRef !== agentRef) {
+            return null;
+          }
+          return {
+            runtime_target_ref: agentRef,
+            display_name: 'Agora Codex Immediate',
+            presentation_mode: 'headless' as const,
+          };
+        },
+      },
       now: () => new Date('2026-04-20T00:00:05.000Z'),
     });
     await relay.handleEvent({
@@ -326,6 +338,16 @@ async function main() {
     const entries = taskConversationRepository.listByTask('OC-EXTERNAL-DISPATCH-1');
     assert(entries.some((entry) => entry.body.includes('角色简报 cc-connect:agora-codex')), 'conversation mirror should include role brief');
     assert(entries.some((entry) => entry.body.includes('Relay smoke reply from cc-connect.')), 'conversation mirror should include relayed cc-connect reply');
+    const replyEntry = entries.find((entry) => entry.body === 'Relay smoke reply from cc-connect.');
+    assert(replyEntry, 'expected relayed conversation entry');
+    const replyMetadata = asRecord(replyEntry.metadata);
+    assert(replyEntry.display_name === 'Agora Codex Immediate', 'expected relayed conversation display name from runtime target lookup');
+    assert(replyMetadata.runtime_provider === 'cc-connect', 'expected relayed conversation runtime provider metadata');
+    assert(replyMetadata.runtime_session_ref === sessionKey, 'expected relayed conversation runtime session metadata');
+    assert(replyMetadata.runtime_target_ref === agentRef, 'expected relayed conversation runtime target metadata');
+    assert(replyMetadata.runtime_target_display_name === 'Agora Codex Immediate', 'expected relayed conversation display name metadata');
+    assert(replyMetadata.presentation_mode === 'headless', 'expected relayed conversation presentation mode metadata');
+    assert(replyMetadata.reply_ctx === routed[0]?.entry_id, 'expected relayed conversation reply ctx metadata');
 
     console.log(JSON.stringify({
       ok: true,
@@ -336,6 +358,8 @@ async function main() {
       runtime_flavor: member.runtime_flavor,
       runtime_selection_source: member.runtime_selection_source,
       runtime_selection_reason: member.runtime_selection_reason,
+      reply_display_name: replyEntry.display_name,
+      reply_presentation_mode: replyMetadata.presentation_mode,
       im_bootstrap_messages: messages.map((message) => message.kind),
       external_dispatch_count: routed.length,
       relay_health: relayHealth,
