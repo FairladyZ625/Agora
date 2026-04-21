@@ -27,10 +27,14 @@ function configureRuntimeEnv(dir: string) {
 }
 
 function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
-  vi.doMock('node:fs', () => ({
-    existsSync: vi.fn(existsSyncImpl),
-    mkdirSync: vi.fn(),
-  }));
+  vi.doMock('node:fs', async (importOriginal) => {
+    const actual = await importOriginal() as Record<string, unknown>;
+    return {
+      ...actual,
+      existsSync: vi.fn(existsSyncImpl),
+      mkdirSync: vi.fn(),
+    };
+  });
   vi.doMock('@agora-ts/config', () => ({
     loadAgoraConfig: vi.fn(() => ({
       db_path: ':memory:',
@@ -86,14 +90,17 @@ function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
     ArchiveJobRepository: class ArchiveJobRepository {},
     CraftsmanExecutionRepository: class CraftsmanExecutionRepository {},
     ProjectBrainIndexJobRepository: class ProjectBrainIndexJobRepository {},
+    RuntimeTargetOverlayRepository: class RuntimeTargetOverlayRepository {},
     SubtaskRepository: class SubtaskRepository {},
   }));
   vi.doMock('@agora-ts/core', () => ({
+    CompositeAgentInventorySource: class CompositeAgentInventorySource {},
     DashboardQueryService: class DashboardQueryService {},
     InboxService: class InboxService {},
     LiveSessionStore: class LiveSessionStore {},
     ProjectBrainDoctorService: class ProjectBrainDoctorService {},
     ProjectBrainIndexQueueService: class ProjectBrainIndexQueueService {},
+    RuntimeTargetService: class RuntimeTargetService {},
     TaskService: class TaskService {
       startupRecoveryScan() {}
     },

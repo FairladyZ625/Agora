@@ -11,6 +11,7 @@ const fetchStatus = vi.fn(async () => 'live');
 const fetchProjects = vi.fn(async () => 'live');
 const apiMocks = vi.hoisted(() => ({
   listSkills: vi.fn(async () => []),
+  listRuntimeTargets: vi.fn(async () => []),
 }));
 const showMessage = vi.fn();
 const setMode = vi.fn();
@@ -155,6 +156,7 @@ vi.mock('@/components/settings/HumanAccountsPanel', () => ({
 vi.mock('@/lib/api', () => ({
   healthCheck: vi.fn(async () => ({ status: 'ok' })),
   listSkills: apiMocks.listSkills,
+  listRuntimeTargets: apiMocks.listRuntimeTargets,
 }));
 
 vi.mock('@/lib/i18n', async () => {
@@ -180,6 +182,7 @@ describe('authoring workbench layout', () => {
     fetchStatus.mockClear();
     fetchProjects.mockClear();
     apiMocks.listSkills.mockClear();
+    apiMocks.listRuntimeTargets.mockClear();
     showMessage.mockClear();
     setMode.mockClear();
     setApiConfig.mockClear();
