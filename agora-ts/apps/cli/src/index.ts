@@ -891,6 +891,30 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `状态: ${task.state}`);
       writeLine(stdout, `阶段: ${task.current_stage ?? '-'}`);
       writeLine(stdout, `Flow Log: ${status.flow_log.length}`);
+      const runtimeSelectionMembers = (task.team?.members ?? []).filter((member) => (
+        Boolean(member.runtime_target_ref)
+        || Boolean(member.runtime_flavor)
+        || Boolean(member.runtime_selection_source)
+        || Boolean(member.runtime_selection_reason)
+      ));
+      if (runtimeSelectionMembers.length > 0) {
+        writeLine(stdout, 'Runtime Selection:');
+        for (const member of runtimeSelectionMembers) {
+          writeLine(stdout, `  ${member.role} -> ${member.agentId}`);
+          if (member.runtime_target_ref) {
+            writeLine(stdout, `    target=${member.runtime_target_ref}`);
+          }
+          if (member.runtime_flavor) {
+            writeLine(stdout, `    flavor=${member.runtime_flavor}`);
+          }
+          if (member.runtime_selection_source) {
+            writeLine(stdout, `    source=${member.runtime_selection_source}`);
+          }
+          if (member.runtime_selection_reason) {
+            writeLine(stdout, `    reason=${member.runtime_selection_reason}`);
+          }
+        }
+      }
     });
 
   const regression = program
