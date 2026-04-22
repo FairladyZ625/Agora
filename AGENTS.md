@@ -179,6 +179,10 @@
 - 开发执行 / 回写流程：
 
   - 先读 [docs/11-REFERENCE/execution-workflow-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/execution-workflow-standard.md)
+- 长程任务 / 自主执行 / 连续多轮 hardening / 少监管长时间推进：
+
+  - 先读 [docs/11-REFERENCE/long-running-task-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/long-running-task-standard.md)
+  - 再读 [docs/11-REFERENCE/execution-workflow-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/execution-workflow-standard.md)
 - 测试 / scenario / 冒烟：
 
   - 先读 [docs/11-REFERENCE/testing-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/testing-standard.md)
