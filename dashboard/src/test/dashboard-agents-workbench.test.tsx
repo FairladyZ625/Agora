@@ -1,5 +1,5 @@
 import { MemoryRouter } from 'react-router';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentsPage } from '@/pages/AgentsPage';
 
@@ -312,39 +312,58 @@ describe('agents workbench layout', () => {
   it('uses grouped anomaly queue rows and drawer-based detail axes', { timeout: 10_000 }, () => {
     renderPage();
 
+    expect(screen.getByRole('heading', { name: '参与者' })).toBeInTheDocument();
     expect(screen.getByTestId('agents-global-status')).toBeInTheDocument();
     expect(screen.getByTestId('agents-issue-queue')).toBeInTheDocument();
     expect(screen.getByTestId('agents-axis-entry')).toBeInTheDocument();
     expect(screen.getByTestId('agents-issue-queue-scroll')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /channel 健康异常/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /agent 状态异常/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /频道健康异常|channel 健康异常/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /参与者状态异常|agent 状态异常/i })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /agent 状态异常/i }));
-    expect(screen.getByRole('dialog', { name: /agent 明细工作区/i })).toBeInTheDocument();
-    expect(screen.getByText('sonnet')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /参与者状态异常|agent 状态异常/i }));
+    expect(screen.getByRole('dialog', { name: /参与者明细工作区/i })).toBeInTheDocument();
+    expect(screen.getAllByText('sonnet').length).toBeGreaterThan(0);
     expect(screen.getAllByText('selectable').length).toBeGreaterThan(0);
     expect(screen.getByText((content) => content.includes('当前已在任务中'))).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole('button', { name: /close|关闭/i }).at(-1)!);
-    fireEvent.click(screen.getByRole('button', { name: /channel 健康异常/i }));
-    expect(screen.getByRole('dialog', { name: /channel 明细工作区/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /频道健康异常|channel 健康异常/i }));
+    expect(screen.getByRole('dialog', { name: /频道参与明细工作区|channel participation detail workspace/i })).toBeInTheDocument();
     expect(screen.getAllByText('discord').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getAllByRole('button', { name: /close|关闭/i }).at(-1)!);
-    fireEvent.click(screen.getByRole('button', { name: /执行运行态/i }));
-    expect(screen.getByRole('dialog', { name: /执行明细工作区/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /运行时会话|runtime sessions/i }));
+    expect(screen.getByRole('dialog', { name: /运行时会话明细工作区|runtime session detail workspace/i })).toBeInTheDocument();
     expect(screen.getByText(/tail:codex/i)).toBeInTheDocument();
   });
 
   it('filters agents by selectability and renders human-readable selectability reasons', () => {
     renderPage();
 
-    fireEvent.click(screen.getByRole('button', { name: /agent 状态异常/i }));
-    expect(screen.getByRole('dialog', { name: /agent 明细工作区/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /参与者状态异常|agent 状态异常/i }));
+    const dialog = screen.getByRole('dialog', { name: /参与者明细工作区/i });
+    expect(dialog).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'restricted' }));
-    expect(screen.getByText('review')).toBeInTheDocument();
-    expect(screen.getByText((content) => content.includes('连接中断，当前不可分配'))).toBeInTheDocument();
-    expect(screen.queryByText('sonnet')).not.toBeInTheDocument();
+    expect(within(dialog).getAllByText('review').length).toBeGreaterThan(0);
+    expect(within(dialog).getByText((content) => content.includes('连接中断，当前不可分配'))).toBeInTheDocument();
+    expect(within(dialog).queryByText('sonnet')).not.toBeInTheDocument();
+  });
+
+  it('derives the default selected participant and updates the selected detail when rows are clicked', () => {
+    const { container } = renderPage();
+    const selectedPanel = container.querySelector('.participants-mgo__selected');
+    expect(selectedPanel).toBeInstanceOf(HTMLElement);
+
+    expect(within(selectedPanel as HTMLElement).getByRole('heading', { name: 'sonnet' })).toBeInTheDocument();
+    expect(container.querySelector('.participants-mgo__row--active')?.textContent).toContain('sonnet');
+
+    const runtimeRow = Array.from(container.querySelectorAll('.participants-mgo__row'))
+      .find((row) => row.textContent?.includes('codex'));
+    expect(runtimeRow).toBeInstanceOf(HTMLElement);
+    fireEvent.click(runtimeRow as HTMLElement);
+
+    expect(within(selectedPanel as HTMLElement).getByRole('heading', { name: 'codex' })).toBeInTheDocument();
+    expect(container.querySelector('.participants-mgo__row--active')?.textContent).toContain('codex');
   });
 });

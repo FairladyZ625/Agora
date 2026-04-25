@@ -1622,6 +1622,9 @@ describe('project workbench pages', () => {
     });
     expect(screen.getByTestId('project-nomos-catalog-panel')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Catalog Pack Id'), { target: { value: 'project/proj-alpha' } });
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('project/proj-alpha')).toBeInTheDocument();
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Show Catalog Entry' }));
     await waitFor(() => {
       expect(showPublishedNomosCatalog).toHaveBeenCalledWith('project/proj-alpha');

@@ -199,8 +199,8 @@ export function ExternalBridgesPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <section className="surface-panel surface-panel--workspace" data-testid="external-bridges-masthead">
+    <div className="interior-page">
+      <section className="surface-panel surface-panel--workspace surface-panel--context-anchor" data-testid="external-bridges-masthead">
         <div className="workbench-masthead">
           <div>
             <p className="page-kicker">{copy.kicker}</p>
@@ -313,7 +313,7 @@ export function ExternalBridgesPage() {
               ))
             )}
           </div>
-          <div className="mt-5 border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
+          <div className="bridge-management-status">
             <p className="field-label">{copy.labels.managementStatus}</p>
             <div className="mt-3 space-y-2">
               {statusProjects.map((project) => (

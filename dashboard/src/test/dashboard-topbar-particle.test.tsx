@@ -68,7 +68,7 @@ describe('dashboard topbar particle rail', () => {
     motionState.setMode.mockClear();
   });
 
-  it('renders a dedicated full-width particle background layer for the desktop topbar', () => {
+  it('renders a non-layout ambient particle background for the desktop topbar', () => {
     render(
       <MemoryRouter>
         <TopNav isMobile={false} onOpenMobileNav={vi.fn()} />
@@ -78,17 +78,41 @@ describe('dashboard topbar particle rail', () => {
     const particleLayer = screen.getByTestId('topbar-intelligence-bar');
     expect(particleLayer).toHaveClass('topbar-intelligence');
     expect(particleLayer).toHaveClass('topbar-intelligence--bar');
+    expect(particleLayer).toHaveClass('topbar-intelligence--ambient');
     expect(
       particleLayer.querySelector('.topbar-intelligence__ornaments'),
-    ).toBeTruthy();
+    ).toBeNull();
     expect(
-      particleLayer.querySelector('.topbar-intelligence__ornaments .topbar-intelligence__carrier'),
-    ).toBeTruthy();
+      particleLayer.querySelector('.topbar-intelligence__carrier'),
+    ).toBeNull();
     expect(
-      particleLayer.querySelectorAll('.topbar-intelligence__ornaments .topbar-intelligence__dot'),
-    ).toHaveLength(3);
+      particleLayer.querySelectorAll('.topbar-intelligence__dot'),
+    ).toHaveLength(0);
     expect(
-      particleLayer.querySelectorAll('.topbar-intelligence__ornaments .topbar-intelligence__rail'),
-    ).toHaveLength(2);
+      particleLayer.querySelectorAll('.topbar-intelligence__rail'),
+    ).toHaveLength(0);
+    expect(screen.getByRole('navigation', { name: 'Global navigation' })).toBeInTheDocument();
+  });
+
+  it('keeps the six desktop topbar destinations reachable and maps system routes active', () => {
+    const { unmount } = render(
+      <MemoryRouter initialEntries={['/bridges']}>
+        <TopNav isMobile={false} onOpenMobileNav={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    const hrefs = screen.getAllByRole('link').map((link) => link.getAttribute('href'));
+    expect(hrefs).toEqual(['/', '/projects', '/reviews', '/participants', '/system', '/settings']);
+    expect(screen.getByRole('link', { name: /系统|System/i })).toHaveClass('topbar-nav__link--active');
+
+    unmount();
+
+    render(
+      <MemoryRouter initialEntries={['/templates/flow_editor/graph']}>
+        <TopNav isMobile={false} onOpenMobileNav={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('link', { name: /系统|System/i })).toHaveClass('topbar-nav__link--active');
   });
 });

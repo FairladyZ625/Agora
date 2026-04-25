@@ -182,12 +182,11 @@ describe('dashboard mobile workbench routes', () => {
     });
 
     const detailSheet = screen.getByRole('dialog', { name: '任务详情面板' });
-    expect(within(detailSheet).getByText('当前阶段成员')).toBeInTheDocument();
+    expect(within(detailSheet).getByText('审计')).toBeInTheDocument();
     expect(within(detailSheet).getByText('review')).toBeInTheDocument();
-    expect(within(detailSheet).getByText('目标成员')).toBeInTheDocument();
-    expect(within(detailSheet).getByText('已在场成员')).toBeInTheDocument();
-    expect(within(detailSheet).getByText('opus, glm5')).toBeInTheDocument();
-    expect(within(detailSheet).getByText(/^opus$/)).toBeInTheDocument();
+    expect(within(detailSheet).getByText('Roster policy')).toBeInTheDocument();
+    expect(within(detailSheet).getByText('目标成员: opus, glm5')).toBeInTheDocument();
+    expect(within(detailSheet).getByText('已在场成员: opus')).toBeInTheDocument();
   });
 
   it('renders runtime selection breadcrumbs in the task detail sheet when task members include them', async () => {
@@ -236,13 +235,14 @@ describe('dashboard mobile workbench routes', () => {
     });
 
     const detailSheet = screen.getByRole('dialog', { name: '任务详情面板' });
-    expect(within(detailSheet).getByText('运行时选择')).toBeInTheDocument();
-    expect(within(detailSheet).getByText('developer / cc-connect:agora-codex-immediate')).toBeInTheDocument();
-    expect(within(detailSheet).getByText('reviewer / cc-connect:agora-claude')).toBeInTheDocument();
-    expect(within(detailSheet).getByText('target: cc-connect:agora-codex-immediate')).toBeInTheDocument();
-    expect(within(detailSheet).getByText('flavor: claude-code')).toBeInTheDocument();
-    expect(within(detailSheet).getAllByText('source: project_flavor_default')).toHaveLength(2);
-    expect(within(detailSheet).getByText('reason: project runtime_targets.flavors.claude-code')).toBeInTheDocument();
+    expect(within(detailSheet).getByText('参与者')).toBeInTheDocument();
+    expect(within(detailSheet).getByText('审计')).toBeInTheDocument();
+    expect(within(detailSheet).getAllByText('developer / cc-connect:agora-codex-immediate').length).toBeGreaterThan(0);
+    expect(within(detailSheet).getAllByText('reviewer / cc-connect:agora-claude').length).toBeGreaterThan(0);
+    expect(within(detailSheet).getAllByText('target: cc-connect:agora-codex-immediate').length).toBeGreaterThan(0);
+    expect(within(detailSheet).getAllByText('flavor: claude-code').length).toBeGreaterThan(0);
+    expect(within(detailSheet).getAllByText('source: project_flavor_default')).toHaveLength(4);
+    expect(within(detailSheet).getAllByText('reason: project runtime_targets.flavors.claude-code').length).toBeGreaterThan(0);
   });
 
   it('opens review detail as a sheet on mobile instead of keeping the inspector mounted inline', async () => {

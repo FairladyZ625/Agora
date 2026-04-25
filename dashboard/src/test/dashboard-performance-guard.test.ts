@@ -37,6 +37,7 @@ describe('dashboard performance guardrails', () => {
   it('avoids over-animating the topbar intelligence rail', () => {
     const animatedSignalMatches = topNavSource.match(/signal-pulse|flow-shift|signal-travel/g) ?? [];
     expect(animatedSignalMatches.length).toBeLessThanOrEqual(3);
+    expect(topNavSource).toContain("animated={motionMode === 'full'}");
     expect(layoutCss).not.toContain('animation-delay: 220ms;');
     expect(layoutCss).not.toContain('animation-delay: 440ms;');
   });

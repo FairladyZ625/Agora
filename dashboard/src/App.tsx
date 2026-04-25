@@ -10,6 +10,8 @@ import { ProjectsPage } from '@/pages/ProjectsPage';
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage';
 import { ProjectBrainPage } from '@/pages/ProjectBrainPage';
 import { ProjectCurrentWorkPage } from '@/pages/ProjectCurrentWorkPage';
+import { ProjectParticipantsPage } from '@/pages/ProjectParticipantsPage';
+import { ProjectGovernancePage } from '@/pages/ProjectGovernancePage';
 import { ProjectKnowledgePage } from '@/pages/ProjectKnowledgePage';
 import { ProjectArchiveWorkspacePage } from '@/pages/ProjectArchiveWorkspacePage';
 import { ProjectOperatorPage } from '@/pages/ProjectOperatorPage';
@@ -24,6 +26,7 @@ import { ArchivePage } from '@/pages/ArchivePage';
 import { TemplatesPage } from '@/pages/TemplatesPage';
 import { TemplateGraphEditorPage } from '@/pages/TemplateGraphEditorPage';
 import { ReviewsPage } from '@/pages/ReviewsPage';
+import { SystemPage } from '@/pages/SystemPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { RequireSession } from '@/components/auth/RequireSession';
@@ -66,10 +69,14 @@ export default function App() {
           <Route path="context" element={<ProjectBrainPage />} />
           <Route path="brain" element={<Navigate to="../context" replace />} />
           <Route path="knowledge" element={<ProjectKnowledgePage />} />
+          <Route path="participants" element={<ProjectParticipantsPage />} />
+          <Route path="governance" element={<ProjectGovernancePage />} />
           <Route path="archive" element={<ProjectArchiveWorkspacePage />} />
           <Route path="operator" element={<ProjectOperatorPage />} />
         </Route>
+        <Route path="/participants" element={<AgentsPage />} />
         <Route path="/agents" element={<AgentsPage />} />
+        <Route path="/system" element={<SystemPage />} />
         <Route path="/runtime-targets" element={<RuntimeTargetsPage />} />
         <Route path="/bridges" element={<ExternalBridgesPage />} />
         <Route path="/todos" element={<TodosPage />} />

@@ -10,17 +10,18 @@ export function ProjectWorkspaceShell() {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="surface-panel surface-panel--workspace">
-        <nav aria-label={copy.ariaLabel} className="flex flex-wrap gap-2">
+    <div className="project-workspace-shell interior-page interior-page--project">
+      <section className="project-workspace-shell__nav project-workspace-shell__nav--compact surface-panel surface-panel--workspace">
+        <nav aria-label={copy.ariaLabel} className="project-workspace-shell__tabs">
           {copy.items.map((item) => (
             <NavLink
               key={item.to}
               to={item.to.replace(':projectId', projectId)}
               end={item.end}
-              className={({ isActive }) => (isActive ? 'choice-pill choice-pill--active' : 'choice-pill')}
+              className={({ isActive }) => (isActive ? 'project-workspace-tab project-workspace-tab--active' : 'project-workspace-tab')}
             >
-              {item.label}
+              <span className="project-workspace-tab__label">{item.label}</span>
+              <span className="project-workspace-tab__hint" aria-hidden="true">{item.hint}</span>
             </NavLink>
           ))}
         </nav>

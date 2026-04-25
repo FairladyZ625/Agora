@@ -6,6 +6,11 @@ const projectRoot = new URL('..', import.meta.url);
 const governedFiles = [
   path.join(projectRoot.pathname, 'src', 'pages', 'ProjectsPage.tsx'),
   path.join(projectRoot.pathname, 'src', 'pages', 'ProjectDetailPage.tsx'),
+  path.join(projectRoot.pathname, 'src', 'pages', 'ProjectCurrentWorkPage.tsx'),
+  path.join(projectRoot.pathname, 'src', 'pages', 'ReviewsPage.tsx'),
+  path.join(projectRoot.pathname, 'src', 'pages', 'AgentsPage.tsx'),
+  path.join(projectRoot.pathname, 'src', 'pages', 'SystemPage.tsx'),
+  path.join(projectRoot.pathname, 'src', 'pages', 'SettingsPage.tsx'),
   path.join(projectRoot.pathname, 'src', 'pages', 'ProjectBrainPage.tsx'),
 ];
 const riskyPropertyNames = new Set(['label', 'title', 'summary', 'placeholder', 'kicker', 'body', 'description']);

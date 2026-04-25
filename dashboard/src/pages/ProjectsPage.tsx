@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router';
 import * as api from '@/lib/api';
 import { useProjectsPageCopy } from '@/lib/dashboardCopy';
@@ -15,6 +15,7 @@ import { useProjectStore } from '@/stores/projectStore';
 import type { ProjectWorkbench, WorkspaceBootstrapStatus } from '@/types/project';
 
 const DEFAULT_PROJECT_NOMOS_ID = 'agora/default';
+type ProjectScopeFilter = 'all' | 'active' | 'review';
 
 function parseAccountIds(value: string) {
   return value
@@ -23,15 +24,61 @@ function parseAccountIds(value: string) {
     .filter((item) => Number.isInteger(item) && item > 0);
 }
 
-function formatUpdatedAt(value: string) {
+function formatRelativeActivity(value: string) {
   const timestamp = Date.parse(value);
   if (Number.isNaN(timestamp)) {
     return value;
   }
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(timestamp);
+  const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60000));
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+function getProjectPriority(workbench: ProjectWorkbench | null) {
+  const stats = workbench?.overview.stats;
+  if (!stats) {
+    return 'Low';
+  }
+  if (stats.reviewTaskCount > 0 || stats.activeTaskCount >= 3) {
+    return 'High';
+  }
+  if (stats.pendingTodoCount > 0 || stats.taskCount > 0) {
+    return 'Medium';
+  }
+  return 'Low';
+}
+
+function getProjectHealth(workbench: ProjectWorkbench | null) {
+  const stats = workbench?.overview.stats;
+  if (!stats) {
+    return 'Unknown';
+  }
+  if (stats.reviewTaskCount > 0) {
+    return 'At Risk';
+  }
+  if (stats.pendingTodoCount > 4) {
+    return 'Degraded';
+  }
+  return 'Healthy';
+}
+
+function getProjectProgress(workbench: ProjectWorkbench | null) {
+  const stats = workbench?.overview.stats;
+  if (!stats || stats.taskCount === 0) {
+    return 0;
+  }
+  const completed = Math.max(0, stats.taskCount - stats.activeTaskCount - stats.reviewTaskCount);
+  return Math.round((completed / stats.taskCount) * 100);
+}
+
+function fillStyle(percent: number): CSSProperties {
+  return { '--fill': `${percent}%` } as CSSProperties;
 }
 
 function buildProjectCache(workbench: ProjectWorkbench | null) {
@@ -63,6 +110,7 @@ export function ProjectsPage() {
   const [memberAccountIds, setMemberAccountIds] = useState('');
   const [workspaceBootstrap, setWorkspaceBootstrap] = useState<WorkspaceBootstrapStatus | null>(null);
   const [query, setQuery] = useState('');
+  const [scopeFilter, setScopeFilter] = useState<ProjectScopeFilter>('all');
   const [sortKey, setSortKey] = useState<ProjectsPageSortKey>('updated');
   const [requestedSelectedProjectId, setRequestedSelectedProjectId] = useState<string | null>(() => readProjectsPageSelection());
   const [prefetchedBriefingsByProject, setPrefetchedBriefingsByProject] = useState<Record<string, ProjectWorkbench>>({});
@@ -93,8 +141,11 @@ export function ProjectsPage() {
     };
   }, []);
 
-  useEffect(() => () => {
-    projectsPageMountedRef.current = false;
+  useEffect(() => {
+    projectsPageMountedRef.current = true;
+    return () => {
+      projectsPageMountedRef.current = false;
+    };
   }, []);
 
   const briefingsByProject = useMemo(() => {
@@ -115,81 +166,87 @@ export function ProjectsPage() {
     () => filterProjectsForWorkbench(projects, query),
     [projects, query],
   );
+  const scopedProjects = useMemo(() => {
+    if (scopeFilter === 'active') {
+      return filteredProjects.filter((project) => project.status === 'active');
+    }
+    if (scopeFilter === 'review') {
+      return filteredProjects.filter((project) => {
+        const briefing = briefingsByProject[project.id] ?? null;
+        return (briefing?.overview.stats.reviewTaskCount ?? 0) > 0;
+      });
+    }
+    return filteredProjects;
+  }, [briefingsByProject, filteredProjects, scopeFilter]);
   const visibleProjects = useMemo(
-    () => sortProjectsForWorkbench(filteredProjects, sortKey, briefingsByProject),
-    [briefingsByProject, filteredProjects, sortKey],
+    () => sortProjectsForWorkbench(scopedProjects, sortKey, briefingsByProject),
+    [briefingsByProject, scopedProjects, sortKey],
+  );
+  const preferredSelectedProjectId = useMemo(
+    () => (requestedSelectedProjectId && projects.some((project) => project.id === requestedSelectedProjectId)
+      ? requestedSelectedProjectId
+      : null),
+    [projects, requestedSelectedProjectId],
   );
 
   const selectedProjectId = useMemo(() => {
     if (projects.length === 0 || visibleProjects.length === 0) {
       return null;
     }
-    if (requestedSelectedProjectId && visibleProjects.some((project) => project.id === requestedSelectedProjectId)) {
-      return requestedSelectedProjectId;
+    if (preferredSelectedProjectId && visibleProjects.some((project) => project.id === preferredSelectedProjectId)) {
+      return preferredSelectedProjectId;
     }
     return pickProjectsPageSelection(visibleProjects, sortKey, briefingsByProject);
-  }, [briefingsByProject, projects.length, requestedSelectedProjectId, sortKey, visibleProjects]);
+  }, [briefingsByProject, preferredSelectedProjectId, projects.length, sortKey, visibleProjects]);
 
   useEffect(() => {
     if (!selectedProjectId) {
       void selectProject(null);
-      writeProjectsPageSelection(null);
+      writeProjectsPageSelection(preferredSelectedProjectId);
       return;
     }
-    writeProjectsPageSelection(selectedProjectId);
+    writeProjectsPageSelection(preferredSelectedProjectId ?? selectedProjectId);
     void selectProject(selectedProjectId);
-  }, [selectedProjectId, selectProject]);
+  }, [preferredSelectedProjectId, selectedProjectId, selectProject]);
 
   useEffect(() => {
-    const projectsToPrefetch = projects.filter((project) => (
-      !briefingsByProject[project.id] && !prefetchingProjectIdsRef.current.has(project.id)
-    ));
+    const projectsToPrefetch = [
+      ...new Set([
+        selectedProjectId,
+        preferredSelectedProjectId,
+        ...visibleProjects.slice(0, 6).map((project) => project.id),
+      ].filter((value): value is string => Boolean(value))),
+    ]
+      .map((projectId) => projects.find((project) => project.id === projectId) ?? null)
+      .filter((project): project is (typeof projects)[number] => project !== null)
+      .filter((project) => (
+        !briefingsByProject[project.id]
+        && !prefetchingProjectIdsRef.current.has(project.id)
+      ));
     if (!projectsToPrefetch.length) {
       return;
     }
 
     for (const project of projectsToPrefetch) {
       prefetchingProjectIdsRef.current.add(project.id);
+      void api.getProjectWorkbench(project.id)
+        .then((response) => {
+          if (!projectsPageMountedRef.current) {
+            return;
+          }
+          const workbench = buildProjectCache(mapProjectWorkbenchDto(response));
+          setPrefetchedBriefingsByProject((current) => (
+            workbench ? { ...current, [project.id]: workbench } : current
+          ));
+        })
+        .catch(() => {
+          // Leave the row in a pending state for this cycle.
+        })
+        .finally(() => {
+          prefetchingProjectIdsRef.current.delete(project.id);
+        });
     }
-
-    void Promise.allSettled(projectsToPrefetch.map(async (project) => ({
-      projectId: project.id,
-      workbench: buildProjectCache(mapProjectWorkbenchDto(await api.getProjectWorkbench(project.id))),
-    }))).then((results) => {
-      if (!projectsPageMountedRef.current) {
-        return;
-      }
-
-      setPrefetchedBriefingsByProject((current) => {
-        const next = { ...current };
-        for (const result of results) {
-          if (result.status === 'fulfilled' && result.value.workbench) {
-            next[result.value.projectId] = result.value.workbench;
-            continue;
-          }
-
-          if (result.status === 'fulfilled') {
-            prefetchingProjectIdsRef.current.delete(result.value.projectId);
-          }
-        }
-        return next;
-      });
-
-      results.forEach((result, index) => {
-        if (result.status === 'rejected') {
-          prefetchingProjectIdsRef.current.delete(projectsToPrefetch[index]?.id ?? '');
-          return;
-        }
-        if (!result.value.workbench) {
-          prefetchingProjectIdsRef.current.delete(result.value.projectId);
-        }
-      });
-    }).catch(() => {
-      for (const project of projectsToPrefetch) {
-        prefetchingProjectIdsRef.current.delete(project.id);
-      }
-    });
-  }, [briefingsByProject, projects]);
+  }, [briefingsByProject, preferredSelectedProjectId, projects, selectedProjectId, visibleProjects]);
 
   const previewProject = selectedProjectId
     ? (selectedProject?.project.id === selectedProjectId
@@ -197,6 +254,33 @@ export function ProjectsPage() {
         : briefingsByProject[selectedProjectId] ?? null)
     : null;
   const previewLoading = Boolean(selectedProjectId) && (detailLoading || !previewProject);
+  const featuredProject = previewProject;
+  const projectRows = visibleProjects.slice(0, 6);
+  const prefetchedProjectCount = Object.keys(briefingsByProject).length;
+  const totalKnownTasks = Object.values(briefingsByProject).reduce(
+    (sum, briefing) => sum + (briefing?.overview.stats.taskCount ?? 0),
+    0,
+  );
+  const totalReviewTasks = Object.values(briefingsByProject).reduce(
+    (sum, briefing) => sum + (briefing?.overview.stats.reviewTaskCount ?? 0),
+    0,
+  );
+  const totalPendingTodos = Object.values(briefingsByProject).reduce(
+    (sum, briefing) => sum + (briefing?.overview.stats.pendingTodoCount ?? 0),
+    0,
+  );
+  const totalKnowledge = Object.values(briefingsByProject).reduce(
+    (sum, briefing) => sum + (briefing?.overview.stats.knowledgeCount ?? 0),
+    0,
+  );
+  const riskProjects = Object.values(briefingsByProject).filter((briefing) => (
+    briefing && getProjectHealth(briefing) !== 'Healthy'
+  )).length;
+  const healthyProjects = Math.max(0, projects.length - riskProjects);
+  const activeProjectCount = projects.filter((project) => project.status === 'active').length;
+  const reviewProjectCount = Object.values(briefingsByProject).filter((briefing) => (
+    (briefing?.overview.stats.reviewTaskCount ?? 0) > 0
+  )).length;
 
   const submitProject = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -227,33 +311,82 @@ export function ProjectsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <section className="surface-panel surface-panel--workspace">
-        <div className="workbench-masthead">
+    <div className="projects-mgo projects-page interior-page interior-page--projects">
+      <section className="projects-mgo__masthead">
+        <div className="projects-mgo__title-row">
           <div>
-            <p className="page-kicker">{copy.kicker}</p>
             <h2 className="page-title">{copy.title}</h2>
             <p className="page-summary">{copy.summary}</p>
           </div>
-          <div className="workbench-masthead__signals projects-page__masthead-signals">
-            <div className="inline-stat">
-              <span className="inline-stat__label">{copy.countLabel}</span>
-              <span className="inline-stat__value">{projects.length}</span>
-            </div>
+          <div className="projects-mgo__top-actions">
             {workspaceBootstrap && !workspaceBootstrap.bootstrapCompleted ? (
               <button
                 type="button"
-                className="button-secondary projects-page__bootstrap-action"
+                className="button-secondary"
                 onClick={() => navigate('/workspace/bootstrap')}
               >
                 {copy.workspaceBootstrapAction}
               </button>
             ) : null}
-            <button type="button" className="button-secondary" onClick={() => setShowCreate((value) => !value)}>
+            <button type="button" className="button-primary" onClick={() => setShowCreate((value) => !value)}>
               {copy.createToggleAction}
             </button>
           </div>
         </div>
+
+        <div className="projects-mgo__controls">
+          <div className="projects-mgo__tabs" role="list" aria-label={copy.scopeLabel}>
+            <button
+              type="button"
+              className={`projects-mgo__tab${scopeFilter === 'all' ? ' projects-mgo__tab--active' : ''}`}
+              aria-pressed={scopeFilter === 'all'}
+              onClick={() => setScopeFilter('all')}
+            >
+              {copy.scopeAll} <span>{projects.length}</span>
+            </button>
+            <button
+              type="button"
+              className={`projects-mgo__tab${scopeFilter === 'active' ? ' projects-mgo__tab--active' : ''}`}
+              aria-pressed={scopeFilter === 'active'}
+              onClick={() => setScopeFilter('active')}
+            >
+              {copy.scopeActive} <span>{activeProjectCount}</span>
+            </button>
+            <button
+              type="button"
+              className={`projects-mgo__tab${scopeFilter === 'review' ? ' projects-mgo__tab--active' : ''}`}
+              aria-pressed={scopeFilter === 'review'}
+              onClick={() => setScopeFilter('review')}
+            >
+              {copy.scopeReview} <span>{reviewProjectCount}</span>
+            </button>
+          </div>
+          <label className="projects-mgo__search">
+            <span className="field-label">{copy.searchLabel}</span>
+            <input
+              aria-label={copy.searchLabel}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="input-shell"
+              placeholder={copy.searchPlaceholder}
+            />
+          </label>
+          <label className="projects-mgo__sort">
+            <span className="field-label">{copy.sortLabel}</span>
+            <select
+              aria-label={copy.sortLabel}
+              value={sortKey}
+              onChange={(event) => setSortKey(event.target.value as ProjectsPageSortKey)}
+              className="input-shell"
+            >
+              <option value="updated">{copy.sortOptions.updated}</option>
+              <option value="tasks">{copy.sortOptions.tasks}</option>
+              <option value="todos">{copy.sortOptions.todos}</option>
+              <option value="name">{copy.sortOptions.name}</option>
+            </select>
+          </label>
+        </div>
+
         {workspaceBootstrap && !workspaceBootstrap.bootstrapCompleted ? (
           <div className="projects-page__bootstrap-hint">
             <span className="status-pill status-pill--neutral">{copy.workspaceBootstrapHintLabel}</span>
@@ -320,193 +453,88 @@ export function ProjectsPage() {
         </section>
       ) : null}
 
-      <div className="workbench-grid workbench-grid--page projects-page__grid">
-        <section className="workbench-pane" data-testid="projects-list-panel">
-          <div className="projects-page__pane-header">
-            <div>
-              <h3 className="section-title">{copy.poolTitle}</h3>
-              <p className="page-summary">{copy.poolSummary}</p>
-            </div>
-            <div className="projects-page__controls">
-              <label className="space-y-2">
-                <span className="field-label">{copy.searchLabel}</span>
-                <input
-                  aria-label={copy.searchLabel}
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  className="input-shell"
-                  placeholder={copy.searchPlaceholder}
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="field-label">{copy.sortLabel}</span>
-                <select
-                  aria-label={copy.sortLabel}
-                  value={sortKey}
-                  onChange={(event) => setSortKey(event.target.value as ProjectsPageSortKey)}
-                  className="input-shell"
-                >
-                  <option value="updated">{copy.sortOptions.updated}</option>
-                  <option value="tasks">{copy.sortOptions.tasks}</option>
-                  <option value="todos">{copy.sortOptions.todos}</option>
-                  <option value="name">{copy.sortOptions.name}</option>
-                </select>
-              </label>
-            </div>
-          </div>
-
-          <div className="workbench-scroll workbench-scroll--list projects-page__pool-scroll">
-            {loading ? (
-              <div className="empty-state">
-                <p className="type-body-sm">{copy.loadingTitle}</p>
-              </div>
-            ) : visibleProjects.length === 0 ? (
-              <div className="empty-state">
-                <p className="type-body-sm">{query ? copy.filteredEmptyTitle : copy.emptyTitle}</p>
-              </div>
-            ) : (
-              <div className="dense-list">
-                {visibleProjects.map((project) => {
-                  const stats = briefingsByProject[project.id]?.overview.stats ?? null;
-                  const isActive = project.id === selectedProjectId;
-
-                  return (
-                    <article key={project.id} className={`dense-row${isActive ? ' dense-row--active' : ''}`}>
-                      <button
-                        type="button"
-                        className="projects-page__row-button"
-                        aria-label={copy.selectProjectAction(project.name)}
-                  onClick={() => setRequestedSelectedProjectId(project.id)}
-                      >
-                        <div className="dense-row__main">
-                          <div className="dense-row__titleblock">
-                            <span className="dense-row__title">{project.name}</span>
-                            <span className="status-pill status-pill--neutral">{project.status}</span>
-                            <span className="status-pill status-pill--neutral">
-                              {project.repoPath ? copy.repoBoundLabel : copy.noRepoLabel}
-                            </span>
-                            <span className="status-pill status-pill--neutral">
-                              {project.nomosId ? `${copy.nomosLabel}: ${project.nomosId}` : copy.noNomosLabel}
-                            </span>
-                          </div>
-                          <div className="dense-row__meta">
-                            <span>{project.id}</span>
-                            <span>{project.owner || copy.ownerFallback}</span>
-                            <span>{formatUpdatedAt(project.updatedAt)}</span>
-                          </div>
-                          <p className="projects-page__row-summary">{project.summary || copy.summaryFallback}</p>
-                          <div className="projects-page__row-signals">
-                            <span>{stats ? copy.metricValues.tasks(stats.taskCount) : copy.metricValues.tasksPending}</span>
-                            <span>{stats ? copy.metricValues.active(stats.activeTaskCount) : copy.metricValues.activePending}</span>
-                            <span>{stats ? copy.metricValues.review(stats.reviewTaskCount) : copy.metricValues.reviewPending}</span>
-                            <span>{stats ? copy.metricValues.todos(stats.pendingTodoCount) : copy.metricValues.todosPending}</span>
-                          </div>
-                        </div>
-                      </button>
-                      <div className="projects-page__row-aside">
-                        <Link to={`/projects/${project.id}`} className="button-secondary">
-                          {copy.openWorkspaceAction}
-                        </Link>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </section>
-
-        <aside className="workbench-pane workbench-pane--inspector" data-testid="projects-preview-pane">
+      <div className="projects-mgo__layout">
+        <div className="projects-mgo__main">
+          <section className="projects-mgo__featured surface-panel surface-panel--workspace" data-testid="projects-preview-pane">
           {previewLoading ? (
             <div className="empty-state projects-page__preview-empty">
               <p className="type-body-sm">{copy.previewLoadingTitle}</p>
             </div>
           ) : previewProject ? (
             <div className="projects-page__preview">
-              <div className="inspector-hero">
-                <div className="space-y-3">
-                  <div className="dense-row__titleblock">
-                    <h3 className="section-title projects-page__preview-title">{previewProject.project.name}</h3>
-                    <span className="status-pill status-pill--neutral">{previewProject.project.status}</span>
+              <div className="projects-mgo__featured-grid">
+                <div className="projects-mgo__featured-copy">
+                  <p className="page-kicker">{copy.featuredProjectTitle}</p>
+                  <h3 className="projects-page__preview-title">{previewProject.project.name}</h3>
+                  <div className="dense-row__meta">
+                    <span>{previewProject.project.status}</span>
+                    <span>{copy.ownerLabel}: {previewProject.project.owner || copy.ownerFallback}</span>
+                    <span>{formatRelativeActivity(previewProject.overview.updatedAt)}</span>
                   </div>
                   <p className="type-body-sm">{previewProject.project.summary || copy.summaryFallback}</p>
-                  <div className="dense-row__meta">
-                    <span>{copy.ownerLabel}: {previewProject.project.owner || copy.ownerFallback}</span>
-                    <span>{copy.updatedLabel}: {formatUpdatedAt(previewProject.overview.updatedAt)}</span>
+                  <div className="projects-mgo__current-work">
+                    <p className="page-kicker">{copy.currentWorkBriefTitle}</p>
+                    <strong>{previewProject.work.tasks[0]?.title ?? copy.emptyTasksTitle}</strong>
+                    <span>{previewProject.work.tasks[0]?.state ?? previewProject.overview.status}</span>
+                    <span>{copy.metricValues.tasks(previewProject.overview.stats.taskCount)}</span>
+                    <span>{copy.metricValues.todos(previewProject.overview.stats.pendingTodoCount)}</span>
+                    <div className="home-mgo__progress-bar home-mgo__progress-bar--compact">
+                      <span style={fillStyle(getProjectProgress(previewProject))} />
+                    </div>
                   </div>
-                  <div className="projects-page__binding-signals">
-                    <span className="status-pill status-pill--neutral">
-                      {previewProject.project.repoPath ? `${copy.repoPathLabel}: ${previewProject.project.repoPath}` : copy.noRepoLabel}
-                    </span>
-                    <span className="status-pill status-pill--neutral">
-                      {previewProject.project.nomosId ? `${copy.nomosLabel}: ${previewProject.project.nomosId}` : copy.noNomosLabel}
-                    </span>
+                  <div className="projects-mgo__stat-row">
+                    <div className="inline-stat">
+                      <span className="inline-stat__label">{copy.statsLabels.tasks}</span>
+                      <span className="inline-stat__value">{previewProject.overview.stats.taskCount}</span>
+                    </div>
+                    <div className="inline-stat">
+                      <span className="inline-stat__label">{copy.statsLabels.reviewTasks}</span>
+                      <span className="inline-stat__value">{previewProject.overview.stats.reviewTaskCount}</span>
+                    </div>
+                    <div className="inline-stat">
+                      <span className="inline-stat__label">{copy.statsLabels.citizens}</span>
+                      <span className="inline-stat__value">{previewProject.overview.stats.citizenCount}</span>
+                    </div>
+                    <div className="inline-stat">
+                      <span className="inline-stat__label">{copy.runtimeLabel}</span>
+                      <span className="inline-stat__value">{getProjectHealth(previewProject)}</span>
+                    </div>
                   </div>
+                </div>
+                <div className="projects-mgo__governance-card">
+                  <p className="page-kicker">{copy.governanceStatusTitle}</p>
+                  <div className="data-row">
+                    <span>{copy.approvalGateLabel}</span>
+                    <strong>{previewProject.overview.stats.reviewTaskCount > 0 ? copy.approvalRequiredValue : copy.approvalClearValue}</strong>
+                  </div>
+                  <div className="data-row">
+                    <span>{copy.policyCheckLabel}</span>
+                    <strong>{copy.policyPassedValue}</strong>
+                  </div>
+                  <div className="data-row">
+                    <span>{copy.evidenceLabel}</span>
+                    <strong>{previewProject.overview.stats.knowledgeCount > 0 ? copy.evidenceCompleteValue : copy.evidenceMissingValue}</strong>
+                  </div>
+                </div>
+                <div className="projects-mgo__pending-card">
+                  <div className="home-mgo__section-head home-mgo__section-head--compact">
+                    <p className="page-kicker">{copy.pendingActionsTitle}</p>
+                    <Link className="text-action" to={`/projects/${previewProject.project.id}/work`}>
+                      {copy.viewAllAction}
+                    </Link>
+                  </div>
+                  {previewProject.work.tasks.slice(0, 3).map((task) => (
+                    <div key={task.id} className="projects-mgo__pending-item">
+                      <strong>{task.title}</strong>
+                      <span>{task.state}</span>
+                    </div>
+                  ))}
+                  {previewProject.work.tasks.length === 0 ? <p className="type-body-sm">{copy.emptyTasksTitle}</p> : null}
+                  <Link to={`/projects/${previewProject.project.id}`} className="button-secondary">
+                    {copy.openWorkQueueAction}
+                  </Link>
                 </div>
               </div>
-
-              <div className="projects-page__preview-stats">
-                <div className="inline-stat">
-                  <span className="inline-stat__label">{copy.statsLabels.tasks}</span>
-                  <span className="inline-stat__value">{previewProject.overview.stats.taskCount}</span>
-                </div>
-                <div className="inline-stat">
-                  <span className="inline-stat__label">{copy.statsLabels.activeTasks}</span>
-                  <span className="inline-stat__value">{previewProject.overview.stats.activeTaskCount}</span>
-                </div>
-                <div className="inline-stat">
-                  <span className="inline-stat__label">{copy.statsLabels.reviewTasks}</span>
-                  <span className="inline-stat__value">{previewProject.overview.stats.reviewTaskCount}</span>
-                </div>
-                <div className="inline-stat">
-                  <span className="inline-stat__label">{copy.statsLabels.pendingTodos}</span>
-                  <span className="inline-stat__value">{previewProject.overview.stats.pendingTodoCount}</span>
-                </div>
-                <div className="inline-stat">
-                  <span className="inline-stat__label">{copy.statsLabels.knowledge}</span>
-                  <span className="inline-stat__value">{previewProject.overview.stats.knowledgeCount}</span>
-                </div>
-                <div className="inline-stat">
-                  <span className="inline-stat__label">{copy.statsLabels.citizens}</span>
-                  <span className="inline-stat__value">{previewProject.overview.stats.citizenCount}</span>
-                </div>
-              </div>
-
-              <section className="sheet-section">
-                <h4 className="section-title">{copy.currentWorkBriefTitle}</h4>
-                <div className="projects-page__brief-grid">
-                  <div className="sheet-summary">
-                    <div className="dense-row__meta">
-                      <span>{copy.metricValues.tasks(previewProject.overview.stats.taskCount)}</span>
-                      <span>{copy.metricValues.todos(previewProject.overview.stats.pendingTodoCount)}</span>
-                    </div>
-                    <div className="dense-list projects-page__brief-list">
-                      {previewProject.work.tasks.slice(0, 5).map((task) => (
-                        <div key={task.id} className="projects-page__brief-item">
-                          <strong>{task.title}</strong>
-                          <span>{task.state}</span>
-                        </div>
-                      ))}
-                      {previewProject.work.tasks.length === 0 ? (
-                        <p className="type-body-sm">{copy.emptyTasksTitle}</p>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="sheet-summary">
-                    <div className="dense-list projects-page__brief-list">
-                      {previewProject.work.todos.slice(0, 3).map((todo) => (
-                        <div key={todo.id} className="projects-page__brief-item">
-                          <strong>{todo.text}</strong>
-                          <span>{todo.status}</span>
-                        </div>
-                      ))}
-                      {previewProject.work.todos.length === 0 ? (
-                        <p className="type-body-sm">{copy.emptyTodosTitle}</p>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              </section>
 
               <section className="sheet-section">
                 <h4 className="section-title">{copy.projectSurfacesBriefTitle}</h4>
@@ -543,6 +571,118 @@ export function ProjectsPage() {
               <p className="type-body-sm">{copy.previewEmptyTitle}</p>
             </div>
           )}
+          </section>
+
+          <section className="projects-mgo__table surface-panel surface-panel--workspace" data-testid="projects-list-panel">
+            <div className="home-mgo__section-head home-mgo__section-head--compact">
+              <div>
+                <p className="page-kicker">{copy.allProjectsTitle}</p>
+                <h3 className="section-title">{copy.poolTitle}</h3>
+              </div>
+              <span className="type-text-sm">{copy.poolSummary}</span>
+            </div>
+            {loading ? (
+              <div className="empty-state">
+                <p className="type-body-sm">{copy.loadingTitle}</p>
+              </div>
+            ) : visibleProjects.length === 0 ? (
+              <div className="empty-state">
+                <p className="type-body-sm">{query ? copy.filteredEmptyTitle : copy.emptyTitle}</p>
+              </div>
+            ) : (
+              <div className="projects-mgo__table-grid">
+                <div className="projects-mgo__table-head">
+                  <span>{copy.tableProjectLabel}</span>
+                  <span>{copy.tableStatusLabel}</span>
+                  <span>{copy.tablePriorityLabel}</span>
+                  <span>{copy.ownerLabel}</span>
+                  <span>{copy.tableHealthLabel}</span>
+                  <span>{copy.tableLastActivityLabel}</span>
+                  <span>{copy.tableNextActionLabel}</span>
+                </div>
+                {projectRows.map((project) => {
+                  const briefing = briefingsByProject[project.id] ?? null;
+                  const isActive = project.id === selectedProjectId;
+                  const health = getProjectHealth(briefing);
+                  const priority = getProjectPriority(briefing);
+
+                  return (
+                    <article key={project.id} className={`projects-mgo__table-row${isActive ? ' is-selected' : ''}`}>
+                      <button
+                        type="button"
+                        className="projects-page__row-button projects-mgo__project-cell"
+                        aria-label={copy.selectProjectAction(project.name)}
+                        onClick={() => setRequestedSelectedProjectId(project.id)}
+                      >
+                        <strong>{project.name}</strong>
+                        <span>{project.id}</span>
+                        <span>
+                          {briefing ? copy.metricValues.tasks(briefing.overview.stats.taskCount) : copy.metricValues.tasksPending}
+                        </span>
+                        <span>
+                          {briefing ? copy.metricValues.todos(briefing.overview.stats.pendingTodoCount) : copy.metricValues.todosPending}
+                        </span>
+                      </button>
+                      <span className="status-pill status-pill--neutral">{project.status}</span>
+                      <span className={`projects-mgo__priority projects-mgo__priority--${priority.toLowerCase()}`}>{priority}</span>
+                      <span>{project.owner || copy.ownerFallback}</span>
+                      <span className={`projects-mgo__health projects-mgo__health--${health.toLowerCase().replace(/\s+/g, '-')}`}>{health}</span>
+                      <span>{formatRelativeActivity(project.updatedAt)}</span>
+                      <Link to={`/projects/${project.id}`} className="text-action">{copy.openWorkspaceAction}</Link>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
+
+        <aside className="projects-mgo__rail">
+          <section className="projects-mgo__rail-panel surface-panel surface-panel--workspace">
+            <p className="page-kicker">{copy.projectPostureTitle}</p>
+            <div className="projects-mgo__donut">
+              <strong>{projects.length}</strong>
+              <span>{copy.totalLabel}</span>
+            </div>
+            <div className="projects-mgo__rail-list">
+              <div className="data-row"><span>{copy.healthyLabel}</span><strong>{healthyProjects}</strong></div>
+              <div className="data-row"><span>{copy.atRiskLabel}</span><strong>{riskProjects}</strong></div>
+              <div className="data-row"><span>{copy.knownTasksLabel}</span><strong>{totalKnownTasks}</strong></div>
+            </div>
+          </section>
+          <section className="projects-mgo__rail-panel surface-panel surface-panel--workspace">
+            <div className="home-mgo__section-head home-mgo__section-head--compact">
+              <p className="page-kicker">{copy.governanceQueueTitle}</p>
+              <Link className="text-action" to="/reviews">{copy.viewAllAction}</Link>
+            </div>
+            <div className="projects-mgo__rail-list">
+              <div className="data-row"><span>{copy.reviewTasksLabel}</span><strong>{totalReviewTasks}</strong></div>
+              <div className="data-row"><span>{copy.pendingTodosLabel}</span><strong>{totalPendingTodos}</strong></div>
+              <div className="data-row"><span>{copy.knowledgeNotesLabel}</span><strong>{totalKnowledge}</strong></div>
+            </div>
+          </section>
+          <section className="projects-mgo__rail-panel surface-panel surface-panel--workspace">
+            <p className="page-kicker">{copy.recentlyActiveTitle}</p>
+            <div className="projects-mgo__activity-list">
+              {visibleProjects.slice(0, 5).map((project) => (
+                <Link key={project.id} to={`/projects/${project.id}`} className="projects-mgo__activity-item">
+                  <span>{project.name.replace(/^Project\s+/u, '')}</span>
+                  <strong>{formatRelativeActivity(project.updatedAt)}</strong>
+                </Link>
+              ))}
+            </div>
+          </section>
+          <section className="projects-mgo__rail-panel surface-panel surface-panel--workspace">
+            <p className="page-kicker">{copy.referenceHealthTitle}</p>
+            <div className="projects-mgo__rail-list">
+              <div className="data-row"><span>{copy.referencesLabel}</span><strong>{totalKnowledge}</strong></div>
+              <div className="data-row"><span>{copy.reviewTasksLabel}</span><strong>{totalReviewTasks}</strong></div>
+              <div className="data-row"><span>{copy.workbenchCoverageLabel}</span><strong>{prefetchedProjectCount}/{projects.length}</strong></div>
+            </div>
+            {featuredProject ? (
+              <Link to={`/projects/${featuredProject.project.id}/context`} className="button-secondary">{copy.openBrainAction}</Link>
+            ) : null}
+          </section>
         </aside>
       </div>
     </div>

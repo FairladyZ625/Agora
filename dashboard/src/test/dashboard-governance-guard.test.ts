@@ -7,6 +7,7 @@ import settingsPageSource from '../pages/SettingsPage.tsx?raw';
 import topNavSource from '../components/layouts/TopNav.tsx?raw';
 import sidebarSource from '../components/layouts/Sidebar.tsx?raw';
 import controlGlassSource from '../components/ui/ControlGlass.tsx?raw';
+import pagesCssSource from '../styles/pages.css?raw';
 import governanceScriptSource from '../../scripts/check-visual-governance.mjs?raw';
 
 const tokenSource = fs.readFileSync(path.resolve(__dirname, '../styles/tokens.css'), 'utf8');
@@ -60,6 +61,11 @@ describe('dashboard governance guardrails', () => {
     expect(tokenSource).toContain('--surface-glass-authority');
     expect(tokenSource).toContain('--signal-line');
     expect(tokenSource).toContain('--signal-active-glow');
+  });
+
+  it('keeps the light workbench theme out of the old accent palette', () => {
+    expect(pagesCssSource).not.toContain('134, 105, 255');
+    expect(pagesCssSource).not.toContain('161, 130, 255');
   });
 
   it('defines motion primitives for signal-driven orchestration feedback', () => {

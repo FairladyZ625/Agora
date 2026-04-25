@@ -33,6 +33,7 @@ const allowedWorkflowExecutionKinds = [
 const allowedWorkflowActions = [
   'discuss',
   'execute',
+  'comment',
   'dispatch_craftsman',
   'approve',
   'reject',

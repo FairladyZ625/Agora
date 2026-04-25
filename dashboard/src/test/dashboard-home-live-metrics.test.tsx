@@ -254,51 +254,35 @@ describe('dashboard home live metrics', () => {
       vi.advanceTimersByTime(500);
     });
 
-    const participantsCard = screen.getAllByText('当前参与 Agent')[0]?.closest('.home-os__telemetry-readout');
+    const participantsCard = screen.getByText('参与人数').closest('.home-mgo__mini-stat');
     expect(participantsCard).not.toBeNull();
-    expect(within(participantsCard as HTMLElement).getByText('3')).toBeInTheDocument();
+    expect(within(participantsCard as HTMLElement).getByText('2')).toBeInTheDocument();
 
-    const cadenceCard = screen
-      .getAllByText('最近完成节点')
-      .map((node) => node.closest('.inline-stat'))
-      .find(Boolean);
-    expect(cadenceCard).not.toBeNull();
-    expect(within(cadenceCard as HTMLElement).getByText('30 分钟前')).toBeInTheDocument();
+    const agentsCard = screen.getByText('Agent 数').closest('.home-mgo__mini-stat');
+    expect(agentsCard).not.toBeNull();
+    expect(within(agentsCard as HTMLElement).getByText('2')).toBeInTheDocument();
 
-    const runningPulse = screen
-      .getAllByText('运行中的编排')
-      .map((node) => node.closest('.inline-stat'))
+    const liveSessionsCard = screen
+      .getAllByText('Live sessions')
+      .map((node) => node.closest('.home-mgo__mini-stat'))
       .find(Boolean);
-    expect(runningPulse).not.toBeNull();
-    expect(within(runningPulse as HTMLElement).getByText('1')).toBeInTheDocument();
+    expect(liveSessionsCard).not.toBeNull();
+    expect(within(liveSessionsCard as HTMLElement).getByText('2')).toBeInTheDocument();
 
-    const waitingPulse = screen
-      .getAllByText('待裁决事项')
-      .map((node) => node.closest('.inline-stat'))
+    const activeAgentsCard = screen
+      .getAllByText('Agents active')
+      .map((node) => node.closest('.home-mgo__mini-stat'))
       .find(Boolean);
-    expect(waitingPulse).not.toBeNull();
-    expect(within(waitingPulse as HTMLElement).getByText('1')).toBeInTheDocument();
+    expect(activeAgentsCard).not.toBeNull();
+    expect(within(activeAgentsCard as HTMLElement).getByText('3')).toBeInTheDocument();
 
-    const completedPulse = screen
-      .getAllByText('最近完成节点')
-      .map((node) => node.closest('.inline-stat'))
-      .find(Boolean);
-    expect(completedPulse).not.toBeNull();
-    expect(within(completedPulse as HTMLElement).getByText('30 分钟前')).toBeInTheDocument();
+    const governanceCapability = screen.getByText('Governance').closest('.home-mgo__capability-item');
+    expect(governanceCapability).not.toBeNull();
+    expect(within(governanceCapability as HTMLElement).getByText('1 项')).toBeInTheDocument();
 
-    const executionPulse = screen
-      .getAllByText('活跃执行单元')
-      .map((node) => node.closest('.inline-stat'))
-      .find(Boolean);
-    expect(executionPulse).not.toBeNull();
-    expect(within(executionPulse as HTMLElement).getByText('4')).toBeInTheDocument();
-
-    const loadPulse = screen
-      .getAllByText('主机负载')
-      .map((node) => node.closest('.inline-stat'))
-      .find(Boolean);
-    expect(loadPulse).not.toBeNull();
-    expect(within(loadPulse as HTMLElement).getByText('1.25')).toBeInTheDocument();
+    const policiesCapability = screen.getByText('Policies').closest('.home-mgo__capability-item');
+    expect(policiesCapability).not.toBeNull();
+    expect(within(policiesCapability as HTMLElement).getByText('3 active')).toBeInTheDocument();
   });
 
   it('defers secondary homepage panels until after the first paint window', () => {
@@ -308,15 +292,21 @@ describe('dashboard home live metrics', () => {
       </MemoryRouter>,
     );
 
-    expect(container.querySelector('.home-os__load')).toBeNull();
-    expect(container.querySelector('.home-os__telemetry-readout')).toBeNull();
+    expect(container.querySelector('.home-mgo__truth-card')).toBeNull();
+    expect(container.querySelector('.home-mgo__audit-list')).toBeNull();
 
     act(() => {
       vi.advanceTimersByTime(160);
     });
 
-    expect(container.querySelector('.home-os__load')).not.toBeNull();
-    expect(container.querySelector('.home-os__telemetry-readout')).not.toBeNull();
+    expect(container.querySelector('.home-mgo__truth-card')).not.toBeNull();
+    expect(container.querySelector('.home-mgo__audit-list')).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(160);
+    });
+
+    expect(container.querySelector('.home-mgo__audit-list')).not.toBeNull();
   });
 
   it('wires the home authority card into the live review action', async () => {
@@ -326,13 +316,34 @@ describe('dashboard home live metrics', () => {
       </MemoryRouter>,
     );
 
-    const approveButton = screen.getByRole('button', { name: '批准进入执行' });
+    const approveButton = screen.getByRole('button', { name: '快速批准' });
     expect(approveButton).not.toBeDisabled();
 
     fireEvent.click(approveButton);
 
     await Promise.resolve();
     expect(resolveReview).toHaveBeenCalledWith('OC-102', 'approve', '');
+  });
+
+  it('does not expose quick approval for non-approval gates', () => {
+    taskStoreState.tasks = [
+      {
+        ...liveTasks[1],
+        gateType: 'archon_review',
+        authority: {
+          approverAccountId: 7,
+        },
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <DashboardHome />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('link', { name: '打开治理队列' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '快速批准' })).not.toBeInTheDocument();
   });
 
   it('routes synthesis into the approver-scoped review queue', async () => {
@@ -346,7 +357,7 @@ describe('dashboard home live metrics', () => {
     );
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '进入待我审批' }));
+      fireEvent.click(screen.getByRole('link', { name: '进入待我审批' }));
       await Promise.resolve();
     });
     expect(screen.getByTestId('location-probe')).toHaveTextContent('/reviews?scope=assigned&selected=OC-102');
@@ -365,12 +376,12 @@ describe('dashboard home live metrics', () => {
       vi.advanceTimersByTime(500);
     });
 
-    expect(screen.getByText('当前暂无裁决目标')).toBeInTheDocument();
-    expect(screen.getAllByText('暂无')).toHaveLength(2);
-    expect(screen.getByText('当前裁决 0 / 0')).toBeInTheDocument();
+    expect(screen.getByText('当前没有需要优先处理的治理动作。')).toBeInTheDocument();
+    expect(screen.getByText('当前没有新的待审动作。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '快速批准' })).not.toBeInTheDocument();
   });
 
-  it('does not preload task detail context until the operator focuses a rail task', () => {
+  it('preloads the default focus audit context and switches when the operator focuses another task', () => {
     render(
       <MemoryRouter>
         <DashboardHome />
@@ -381,10 +392,10 @@ describe('dashboard home live metrics', () => {
       vi.advanceTimersByTime(500);
     });
 
-    expect(taskStoreState.selectTask).not.toHaveBeenCalled();
-    expect(screen.getByText('选择一个任务后再展开执行回路。')).toBeInTheDocument();
+    expect(taskStoreState.selectTask).toHaveBeenCalledWith('OC-101');
+    expect(screen.getByText('Reference & context integrity')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /等待裁决/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: '打开焦点工作面' })[1]);
     expect(taskStoreState.selectTask).toHaveBeenCalledWith('OC-102');
   });
 

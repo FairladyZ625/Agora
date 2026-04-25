@@ -4,6 +4,7 @@ export interface IntelligenceCanvasProps {
   activeCount: number;
   reviewCount: number;
   hasError: boolean;
+  animated?: boolean;
   className?: string;
   testId?: string;
 }
@@ -151,16 +152,7 @@ function CssFallback({ className, testId }: { className?: string; testId?: strin
       className={`topbar-intelligence${className ? ` ${className}` : ''}`}
       data-testid={testId}
       aria-hidden="true"
-    >
-      <div className="topbar-intelligence__ornaments">
-        <span className="topbar-intelligence__dot topbar-intelligence__dot--1" />
-        <span className="topbar-intelligence__dot topbar-intelligence__dot--2" />
-        <span className="topbar-intelligence__dot topbar-intelligence__dot--3" />
-        <span className="topbar-intelligence__rail topbar-intelligence__rail--left flow-shift" />
-        <span className="topbar-intelligence__rail topbar-intelligence__rail--right" />
-        <span className="topbar-intelligence__carrier signal-travel" />
-      </div>
-    </div>
+    />
   );
 }
 
@@ -168,6 +160,7 @@ export function IntelligenceCanvas({
   activeCount,
   reviewCount,
   hasError,
+  animated = true,
   className,
   testId,
 }: IntelligenceCanvasProps) {
@@ -182,7 +175,7 @@ export function IntelligenceCanvas({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || size.width <= 0 || size.height <= 0) return;
+    if (!animated || !canvas || size.width <= 0 || size.height <= 0) return;
 
     const gl = canvas.getContext('webgl2', { alpha: true, antialias: true });
     if (!gl) return;
@@ -258,7 +251,7 @@ export function IntelligenceCanvas({
       glContext.uniform3f(uColor, color[0], color[1], color[2]);
 
       const speedCap = Math.min(ac, 5);
-      const lerpT = reducedMotion ? 1 : 0.06;
+      const lerpT = reducedMotion ? 0.03 : 0.06;
       const verticalBand = drawHeight * 0.22;
 
       for (let i = 0; i < particleCount; i += 1) {
@@ -287,10 +280,9 @@ export function IntelligenceCanvas({
         particles[i].vy += (targetVy[i] - particles[i].vy) * lerpT;
         particles[i].opacity += (targetOp[i] - particles[i].opacity) * lerpT;
 
-        if (!reducedMotion) {
-          particles[i].x += particles[i].vx;
-          particles[i].y += particles[i].vy;
-        }
+        const motionMultiplier = reducedMotion ? 0.18 : 1;
+        particles[i].x += particles[i].vx * motionMultiplier;
+        particles[i].y += particles[i].vy * motionMultiplier;
 
         if (particles[i].x < -16 * dpr) particles[i].x = drawWidth + 8 * dpr;
         if (particles[i].x > drawWidth + 16 * dpr) particles[i].x = -8 * dpr;
@@ -323,10 +315,6 @@ export function IntelligenceCanvas({
       glContext.vertexAttribPointer(aSize, 1, glContext.FLOAT, false, 0, 0);
 
       glContext.drawArrays(glContext.POINTS, 0, particleCount);
-
-      if (reducedMotion) {
-        cancelAnimationFrame(rafId);
-      }
     }
 
     tick();
@@ -338,7 +326,7 @@ export function IntelligenceCanvas({
       glContext.deleteBuffer(szBuf);
       glContext.deleteProgram(program);
     };
-  }, [size.height, size.width]);
+  }, [animated, size.height, size.width]);
 
   return (
     <div
@@ -348,14 +336,6 @@ export function IntelligenceCanvas({
       aria-hidden="true"
     >
       <canvas ref={canvasRef} className="topbar-intelligence__canvas" />
-      <div className="topbar-intelligence__ornaments">
-        <span className="topbar-intelligence__dot topbar-intelligence__dot--1" />
-        <span className="topbar-intelligence__dot topbar-intelligence__dot--2" />
-        <span className="topbar-intelligence__dot topbar-intelligence__dot--3" />
-        <span className="topbar-intelligence__rail topbar-intelligence__rail--left flow-shift" />
-        <span className="topbar-intelligence__rail topbar-intelligence__rail--right" />
-        <span className="topbar-intelligence__carrier signal-travel" />
-      </div>
     </div>
   );
 }

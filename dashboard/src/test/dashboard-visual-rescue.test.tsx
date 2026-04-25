@@ -120,16 +120,17 @@ describe('dashboard visual rescue target structure', () => {
   it('turns the home hero into an operational summary with direct next actions', () => {
     renderWithRouter(<DashboardHome />);
 
-    expect(screen.getByText('Agora')).toBeInTheDocument();
-    expect(screen.getByText('当前总览')).toBeInTheDocument();
-    expect(screen.getByText('待审批事项')).toBeInTheDocument();
-    expect(screen.getByText('活跃任务')).toBeInTheDocument();
-    expect(screen.getByText('运行治理')).toBeInTheDocument();
+    expect(screen.getByText('Governance overview')).toBeInTheDocument();
+    expect(screen.getByText(/早上好/)).toBeInTheDocument();
+    expect(screen.getByText('Prioritized actions')).toBeInTheDocument();
+    expect(screen.getByText('Current focus')).toBeInTheDocument();
+    expect(screen.getByText('Runtime truth')).toBeInTheDocument();
     expect(screen.getByTestId('home-signal-field')).toBeInTheDocument();
-    expect(screen.getByText('待决议队列')).toBeInTheDocument();
-    expect(screen.getByText(/待处理 1 个审批/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /打开 Project 工作区/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /进入裁决台|进入审批队列/i })).toBeInTheDocument();
+    expect(screen.getByText('Recent audit trail')).toBeInTheDocument();
+    expect(screen.getByText('Reference & context integrity')).toBeInTheDocument();
+    expect(screen.getByText(/当前显示 1 \/ 1 项/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /打开工作区/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: /打开治理队列|进入待我审批/i }).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Agora 不是普通控制台/)).not.toBeInTheDocument();
     expect(screen.queryByText('广场，而不是后台')).not.toBeInTheDocument();
   });
@@ -143,7 +144,9 @@ describe('dashboard visual rescue target structure', () => {
 
     expect(screen.getByRole('img', { name: 'Agora 指挥广场' })).toBeInTheDocument();
     expect(screen.getAllByText('Agora').length).toBeGreaterThan(0);
-    expect(screen.getByText('系统时钟')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Global navigation' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /系统/i })).toHaveAttribute('href', '/system');
+    expect(screen.queryByText('系统时钟')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '重播 Agora 入场动效' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '打开导航' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '关闭侧边栏' })).not.toBeInTheDocument();
@@ -332,10 +335,10 @@ describe('dashboard visual rescue target structure', () => {
   it('uses formalized product copy on the home page', () => {
     renderWithRouter(<DashboardHome />);
 
-    expect(screen.getByText('AGORA / 指挥广场')).toBeInTheDocument();
-    expect(screen.getByText('实时态势总览')).toBeInTheDocument();
-    expect(screen.getByText('当前裁决')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /查看 Agent 监测/i })).toBeInTheDocument();
+    expect(screen.getByText('系统态势')).toBeInTheDocument();
+    expect(screen.getByText('优先队列')).toBeInTheDocument();
+    expect(screen.getByText('当前焦点')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /进入系统面/i })).toBeInTheDocument();
   });
 
   it('removes duplicate shell signature copy from the sidebar header', () => {
@@ -347,6 +350,6 @@ describe('dashboard visual rescue target structure', () => {
 
     expect(screen.queryByText('多 Agent 协作编排中枢')).not.toBeInTheDocument();
     expect(screen.queryByText('品牌主舞台')).not.toBeInTheDocument();
-    expect(screen.getByText('态势总览')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Agora 指挥广场' })).toBeInTheDocument();
   });
 });

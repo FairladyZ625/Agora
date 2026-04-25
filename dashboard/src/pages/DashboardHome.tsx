@@ -1,181 +1,41 @@
-import { startTransition, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { ArrowRight, ChevronLeft, ChevronRight, Clock3, Network, PanelRightOpen, ScrollText } from 'lucide-react';
-import { motion } from 'motion/react';
-import { Link, useNavigate } from 'react-router';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import {
+  ArrowRight,
+  CheckCircle2,
+  ChevronRight,
+  FolderOpen,
+  Gauge,
+  Network,
+  ShieldCheck,
+  Sparkles,
+  TriangleAlert,
+} from 'lucide-react';
+import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useDashboardHomeCopy } from '@/lib/dashboardCopy';
 import { deriveDashboardHomeMetrics } from '@/lib/dashboardHomeMetrics';
+import { buildProjectTaskHref, buildProjectWorkHref } from '@/lib/projectTaskRoutes';
 import { useTaskStore } from '@/stores/taskStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useMotionStore } from '@/stores/motionStore';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { HomeSignalField } from '@/components/ui/HomeSignalField';
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { CraftsmanGovernanceSnapshot, Task, TaskStatus } from '@/types/task';
 
-function getProposalTone(state: string) {
-  if (state === 'gate_waiting') {
-    return 'constraint';
-  }
-  if (state === 'in_progress') {
-    return 'optimize';
-  }
-  return 'observe';
-}
-
-function getProposalToneLabel(
-  tone: 'constraint' | 'optimize' | 'observe',
-  toneLabels: {
-    constraint: string;
-    optimize: string;
-    observe: string;
-  },
-) {
-  return toneLabels[tone];
-}
-
-function formatAuthorityStage(task: Task | null, fallbackStage: string) {
-  if (!task) {
-    return fallbackStage;
-  }
-
-  return task.stageName?.trim() || task.current_stage?.trim() || fallbackStage;
-}
-
-function formatAuthorityGate(task: Task | null, fallbackGate: string) {
-  if (!task) {
-    return fallbackGate;
-  }
-
-  return task.gateType?.trim() || fallbackGate;
-}
-
-function formatAuthoritySummary(task: Task | null, fallbackSummary: string) {
-  if (!task) {
-    return fallbackSummary;
-  }
-
-  if (task.description?.trim()) {
-    return task.description;
-  }
-
-  const summaryParts = [
-    task.teamLabel?.trim(),
-    task.workflowLabel?.trim(),
-    formatRelativeTimestamp(task.updated_at),
-  ].filter(Boolean);
-
-  return summaryParts.length > 0 ? summaryParts.join(' / ') : fallbackSummary;
-}
-
-function buildExecutionLanes(status: TaskStatus | null, task: Task | null, fallbackStage: string) {
-  const subtasks = status?.subtasks ?? [];
-  if (subtasks.length === 0) {
-    if (!task) {
-      return [];
-    }
-
-    return [
-      {
-        stageId: task.current_stage ?? fallbackStage,
-        items: [
-          {
-            id: task.id,
-            title: task.title,
-            assignee: task.teamLabel,
-            status: task.state,
-          },
-        ],
-      },
-    ];
-  }
-
-  const lanes = new Map<
-    string,
-    {
-      stageId: string;
-      items: Array<{ id: string; title: string; assignee: string; status: string }>;
-    }
-  >();
-
-  subtasks.forEach((subtask) => {
-    const stageId = subtask.stage_id?.trim() || fallbackStage;
-    if (!lanes.has(stageId)) {
-      lanes.set(stageId, { stageId, items: [] });
-    }
-
-    lanes.get(stageId)?.items.push({
-      id: subtask.id,
-      title: subtask.title,
-      assignee: subtask.assignee,
-      status: subtask.status,
-    });
-  });
-
-  return [...lanes.values()];
-}
-
-function buildOperationalLines(status: TaskStatus | null, task: Task | null, fallbackStage: string) {
-  const flowEntries =
-    status?.flow_log.map((entry) => ({
-      id: `flow-${entry.id}`,
-      prefix: 'FLOW',
-      title: entry.event,
-      meta: entry.stage_id ?? fallbackStage,
-      body: entry.detail ?? entry.event,
-      createdAt: entry.created_at,
-    })) ?? [];
-
-  const progressEntries =
-    status?.progress_log.map((entry) => ({
-      id: `progress-${entry.id}`,
-      prefix: 'LOG',
-      title: entry.actor,
-      meta: entry.stage_id ?? fallbackStage,
-      body: entry.content,
-      createdAt: entry.created_at,
-    })) ?? [];
-
-  const merged = [...flowEntries, ...progressEntries].sort((left, right) => {
-    return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
-  });
-
-  if (merged.length > 0) {
-    return merged.slice(0, 8);
-  }
-
-  if (!task) {
-    return [];
-  }
-
-  return [
-    {
-      id: `task-${task.id}`,
-      prefix: 'TASK',
-      title: task.id,
-      meta: task.current_stage ?? fallbackStage,
-      body: task.description ?? task.workflowLabel,
-      createdAt: task.updated_at,
-    },
-  ];
-}
-
-function formatGovernanceMemoryValue(governanceSnapshot: CraftsmanGovernanceSnapshot | null) {
-  const host = governanceSnapshot?.host;
-  if (!host) {
-    return '—';
-  }
-  if (host.platform === 'darwin' && host.memoryPressure != null) {
-    return `${Math.round(host.memoryPressure * 100)}% pressure`;
-  }
-  if (host.memoryUtilization != null) {
-    return `${Math.round(host.memoryUtilization * 100)}%`;
-  }
-  return '—';
-}
+const ACTIVE_HOME_STATES = new Set(['in_progress', 'gate_waiting', 'paused', 'blocked']);
+const PROJECT_STATE_RANK = {
+  gate_waiting: 0,
+  blocked: 1,
+  in_progress: 2,
+  paused: 3,
+  completed: 4,
+  failed: 5,
+  cancelled: 6,
+  pending: 7,
+} satisfies Record<Task['state'], number>;
 
 function isReviewActionable(task: Task | null, sessionAccountId: number | null) {
   if (!task) {
@@ -183,19 +43,219 @@ function isReviewActionable(task: Task | null, sessionAccountId: number | null) 
   }
 
   if (task.gateType !== 'approval') {
-    return true;
+    return false;
   }
 
   const approverAccountId = task.authority?.approverAccountId ?? null;
-  return approverAccountId == null || approverAccountId === sessionAccountId;
+  return sessionAccountId != null && approverAccountId === sessionAccountId;
+}
+
+function getPriorityTone(task: Task) {
+  if (task.priority === 'high' || task.state === 'gate_waiting') {
+    return 'critical';
+  }
+  if (task.priority === 'normal' || task.state === 'in_progress') {
+    return 'warning';
+  }
+  return 'info';
+}
+
+function getProjectTone(task: Task) {
+  if (task.state === 'gate_waiting') {
+    return 'critical';
+  }
+  if (task.state === 'in_progress') {
+    return 'active';
+  }
+  if (task.state === 'blocked' || task.state === 'failed') {
+    return 'warning';
+  }
+  return 'planned';
+}
+
+function getProgressValue(task: Task) {
+  switch (task.state) {
+    case 'completed':
+      return 100;
+    case 'gate_waiting':
+      return 68;
+    case 'in_progress':
+      return 55;
+    case 'paused':
+      return 42;
+    case 'blocked':
+      return 26;
+    default:
+      return 18;
+  }
+}
+
+function fillStyle(value: number | string): CSSProperties {
+  const fill = typeof value === 'number' ? `${value}%` : value;
+  return { '--fill': fill } as CSSProperties;
+}
+
+function toTracePercent(value: number, scale: number) {
+  return `${Math.max(8, Math.min(100, Math.round(value * scale)))}%`;
+}
+
+function buildAuditTrail(
+  selectedStatus: TaskStatus | null,
+  focusTask: Task | null,
+  fallbackSummary: string,
+) {
+  const flowEntries =
+    selectedStatus?.flow_log.map((entry) => ({
+      id: `flow-${entry.id}`,
+      title: entry.event,
+      actor: entry.actor ?? 'system',
+      time: formatRelativeTimestamp(entry.created_at),
+      createdAt: entry.created_at,
+      tone:
+        entry.kind === 'transition'
+          ? 'success'
+          : entry.kind === 'warning'
+            ? 'warning'
+            : 'info',
+    })) ?? [];
+
+  const progressEntries =
+    selectedStatus?.progress_log.map((entry) => ({
+      id: `progress-${entry.id}`,
+      title: entry.content,
+      actor: entry.actor,
+      time: formatRelativeTimestamp(entry.created_at),
+      createdAt: entry.created_at,
+      tone: 'neutral',
+    })) ?? [];
+
+  const merged = [...flowEntries, ...progressEntries]
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+    .slice(0, 5);
+
+  if (merged.length > 0) {
+    return merged;
+  }
+
+  if (!focusTask) {
+    return [];
+  }
+
+  return [
+    {
+      id: focusTask.id,
+      title: fallbackSummary,
+      actor: focusTask.creator,
+      time: formatRelativeTimestamp(focusTask.updated_at),
+      tone: 'info',
+    },
+  ];
+}
+
+function buildReferenceIntegrity(
+  governanceSnapshot: CraftsmanGovernanceSnapshot | null,
+  healthSnapshot: {
+    runtime?: { status: string } | null;
+    im?: { activeBindings: number } | null;
+    tasks?: { totalTasks: number } | null;
+    host?: { status: string } | null;
+  } | null,
+) {
+  const runtimeWarnings = governanceSnapshot?.warnings.length ?? 0;
+  return {
+    taskRecords: healthSnapshot?.tasks?.totalTasks ?? 0,
+    runtimeWarnings,
+    hostPressure: governanceSnapshot?.hostPressureStatus ?? healthSnapshot?.host?.status ?? 'unknown',
+    bridgeBindings: healthSnapshot?.im?.activeBindings ?? 0,
+    runtimeStatus: healthSnapshot?.runtime?.status ?? 'unknown',
+  };
+}
+
+function buildActiveProjectCards(tasks: Task[]) {
+  const groups = new Map<string, Task[]>();
+  tasks.forEach((task) => {
+    const key = task.projectId ?? `task:${task.id}`;
+    groups.set(key, [...(groups.get(key) ?? []), task]);
+  });
+
+  return [...groups.entries()]
+    .map(([key, projectTasks]) => {
+      const sortedTasks = [...projectTasks].sort((left, right) => {
+        const stateDelta = PROJECT_STATE_RANK[left.state] - PROJECT_STATE_RANK[right.state];
+        if (stateDelta !== 0) {
+          return stateDelta;
+        }
+        return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
+      });
+      const focusTask = sortedTasks[0];
+      return {
+        key,
+        projectId: focusTask.projectId,
+        title: focusTask.projectId ?? focusTask.workflowLabel,
+        summary: focusTask.description,
+        taskCount: projectTasks.length,
+        focusTask,
+        updatedAt: sortedTasks.reduce(
+          (latest, task) => (new Date(task.updated_at).getTime() > new Date(latest).getTime() ? task.updated_at : latest),
+          focusTask.updated_at,
+        ),
+      };
+    })
+    .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+    .slice(0, 4);
+}
+
+function buildCapabilityItems(
+  homeMetrics: ReturnType<typeof deriveDashboardHomeMetrics>,
+  governanceSnapshot: CraftsmanGovernanceSnapshot | null,
+  healthSnapshot: {
+    runtime?: { status: string; activeSessions: number } | null;
+    im?: { status: string; activeBindings: number } | null;
+    tasks?: { totalTasks: number } | null;
+  } | null,
+  homeCopy: ReturnType<typeof useDashboardHomeCopy>,
+) {
+  return [
+    {
+      key: 'governance',
+      label: homeCopy.capabilityStrip.governance,
+      value: `${homeMetrics.waitingCount} ${homeCopy.capabilityStrip.items}`,
+      tone: homeMetrics.waitingCount > 0 ? 'warning' : 'success',
+    },
+    {
+      key: 'targets',
+      label: homeCopy.capabilityStrip.runtimeTargets,
+      value: `${healthSnapshot?.runtime?.activeSessions ?? 0} ${homeCopy.capabilityStrip.healthy}`,
+      tone: healthSnapshot?.runtime?.status === 'healthy' ? 'success' : 'warning',
+    },
+    {
+      key: 'bridges',
+      label: homeCopy.capabilityStrip.bridges,
+      value: `${healthSnapshot?.im?.activeBindings ?? 0} ${homeCopy.capabilityStrip.healthy}`,
+      tone: healthSnapshot?.im?.status === 'healthy' ? 'success' : 'warning',
+    },
+    {
+      key: 'policies',
+      label: homeCopy.capabilityStrip.policies,
+      value: `${healthSnapshot?.tasks?.totalTasks ?? 0} ${homeCopy.capabilityStrip.active}`,
+      tone: homeMetrics.waitingCount > 0 ? 'warning' : 'neutral',
+    },
+    {
+      key: 'participants',
+      label: homeCopy.capabilityStrip.participants,
+      value: `${homeMetrics.participantCount} ${homeCopy.capabilityStrip.online}`,
+      tone: (governanceSnapshot?.activeByAssignee.length ?? 0) > 0 ? 'success' : 'neutral',
+    },
+  ];
 }
 
 export function DashboardHome() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const homeCopy = useDashboardHomeCopy();
   const isMobile = useMediaQuery('(max-width: 767px)');
-  const motionMode = useMotionStore((state) => state.mode);
+  const isTablet = useMediaQuery('(max-width: 1180px)');
   const sessionAccountId = useSessionStore((state) => state.accountId);
+  const sessionUsername = useSessionStore((state) => state.username);
   const tasks = useTaskStore((state) => state.tasks);
   const loading = useTaskStore((state) => state.loading);
   const error = useTaskStore((state) => state.error);
@@ -208,9 +268,7 @@ export function DashboardHome() {
   const refreshInterval = useSettingsStore((state) => state.refreshInterval);
   const pauseOnHidden = useSettingsStore((state) => state.pauseOnHidden);
   const { showMessage } = useFeedbackStore();
-  const navigate = useNavigate();
-  const [reviewIndex, setReviewIndex] = useState(0);
-  const [railTaskId, setRailTaskId] = useState<string | null>(null);
+  const [selectedFocusTaskId, setSelectedFocusTaskId] = useState<string | null>(null);
   const [summaryReady, setSummaryReady] = useState(false);
   const [railReady, setRailReady] = useState(false);
 
@@ -245,12 +303,8 @@ export function DashboardHome() {
   }, [fetchTasks, loading, pauseOnHidden, refreshInterval]);
 
   useEffect(() => {
-    const summaryTimerId = window.setTimeout(() => {
-      startTransition(() => setSummaryReady(true));
-    }, 120);
-    const railTimerId = window.setTimeout(() => {
-      startTransition(() => setRailReady(true));
-    }, 420);
+    const summaryTimerId = window.setTimeout(() => setSummaryReady(true), 120);
+    const railTimerId = window.setTimeout(() => setRailReady(true), 300);
 
     return () => {
       window.clearTimeout(summaryTimerId);
@@ -263,100 +317,84 @@ export function DashboardHome() {
     [governanceSnapshot, homeCopy.latestCompletedFallback, tasks],
   );
 
+  const activeTasks = useMemo(
+    () => homeMetrics.recentTasks.filter((task) => ACTIVE_HOME_STATES.has(task.state)),
+    [homeMetrics.recentTasks],
+  );
   const reviewItems = homeMetrics.reviewItems;
   const actionableReviewItems = useMemo(
     () => reviewItems.filter((task) => isReviewActionable(task, sessionAccountId)),
     [reviewItems, sessionAccountId],
   );
-  const reviewDeckItems = actionableReviewItems.length > 0 ? actionableReviewItems : reviewItems;
-  const currentReviewIndex =
-    reviewDeckItems.length === 0 ? 0 : Math.min(reviewIndex, reviewDeckItems.length - 1);
-  const focusReview = reviewDeckItems[currentReviewIndex] ?? null;
-  const railTasks = useMemo(() => {
-    const activeTasks = homeMetrics.recentTasks.filter((task) =>
-      ['in_progress', 'gate_waiting', 'paused', 'blocked'].includes(task.state),
-    );
-    return (activeTasks.length > 0 ? activeTasks : homeMetrics.recentTasks).slice(0, 5);
-  }, [homeMetrics.recentTasks]);
-  const visibleRailTasks = summaryReady ? railTasks : railTasks.slice(0, 3);
-  const loadPercent = homeMetrics.recentTasks.length === 0
-    ? 0
-    : Math.min(
-        92,
-        Math.round(((homeMetrics.activeCount * 2 + homeMetrics.waitingCount) / Math.max(homeMetrics.recentTasks.length, 1)) * 34),
-      );
-  const canResolveReview = isReviewActionable(focusReview, sessionAccountId);
-  const authorityStage = focusReview
-    ? formatAuthorityStage(focusReview, homeCopy.resolutionFallbacks.stage)
-    : homeCopy.resolutionEmptyValue;
-  const authorityGate = focusReview
-    ? formatAuthorityGate(focusReview, homeCopy.resolutionFallbacks.gate)
-    : homeCopy.resolutionEmptyValue;
-  const authorityTitle = focusReview?.title ?? homeCopy.resolutionEmptyTitle;
-  const authoritySummary = focusReview
-    ? formatAuthoritySummary(focusReview, homeCopy.resolutionFallbacks.summary)
-    : homeCopy.resolutionEmptySummary;
-  const selectedRailTask = railTaskId
-    ? railTasks.find((task) => task.id === railTaskId) ?? null
-    : null;
-  const railStatus = selectedRailTask && selectedTaskStatus?.task.id === selectedRailTask.id ? selectedTaskStatus : null;
-  const executionLanes = useMemo(
-    () => (railReady
-      ? buildExecutionLanes(railStatus, selectedRailTask, homeCopy.taskRailLabels.stageFallback)
-      : []),
-    [homeCopy.taskRailLabels.stageFallback, railReady, railStatus, selectedRailTask],
+  const prioritizedActions = [...actionableReviewItems, ...reviewItems.filter((task) => !actionableReviewItems.some((item) => item.id === task.id))]
+    .slice(0, 4);
+  const focusTask = useMemo(() => {
+    if (selectedFocusTaskId) {
+      return activeTasks.find((task) => task.id === selectedFocusTaskId) ?? null;
+    }
+    return activeTasks[0] ?? homeMetrics.recentTasks[0] ?? null;
+  }, [activeTasks, homeMetrics.recentTasks, selectedFocusTaskId]);
+  const focusTaskStatus = focusTask && selectedTaskStatus?.task.id === focusTask.id ? selectedTaskStatus : null;
+  const reviewFocus = prioritizedActions[0] ?? null;
+  const activeProjectCards = useMemo(
+    () => buildActiveProjectCards(activeTasks.length > 0 ? activeTasks : homeMetrics.recentTasks),
+    [activeTasks, homeMetrics.recentTasks],
   );
-  const runtimeLines = useMemo(
-    () => (railReady
-      ? buildOperationalLines(railStatus, selectedRailTask, homeCopy.taskRailLabels.stageFallback)
-      : []),
-    [homeCopy.taskRailLabels.stageFallback, railReady, railStatus, selectedRailTask],
-  );
-  const selectedRailSummaryParts = selectedRailTask
-    ? [
-        selectedRailTask.teamLabel?.trim(),
-        selectedRailTask.workflowLabel?.trim(),
-        formatRelativeTimestamp(selectedRailTask.updated_at),
-      ].filter(Boolean)
-    : [];
-  const heroStrips = [
+  const auditTrail = buildAuditTrail(focusTaskStatus, focusTask, homeCopy.auditTrailFallback);
+  const referenceIntegrity = buildReferenceIntegrity(governanceSnapshot, healthSnapshot);
+  const capabilityItems = buildCapabilityItems(homeMetrics, governanceSnapshot, healthSnapshot, homeCopy);
+  const focusHref = focusTask ? buildProjectTaskHref(focusTask.id, focusTask.projectId) : '/projects';
+  const focusWorkspaceHref = focusTask ? buildProjectWorkHref(focusTask.projectId) : '/projects';
+  const focusSelectionTags = (focusTask?.teamMembers ?? []).slice(0, 5);
+  const runtimeTruthSignals = [
     {
-      key: 'pending',
-      label: homeCopy.heroStackLabels.pending,
-      body: focusReview
-        ? homeCopy.heroBriefs.pending(homeMetrics.waitingCount, focusReview.title)
-        : homeCopy.heroBriefs.idle(),
-      value: `${homeMetrics.waitingCount}${homeCopy.reviewCountUnit}`,
-      toneClass: homeMetrics.waitingCount > 0 ? 'warning' : 'neutral',
+      key: 'sessions',
+      label: homeCopy.runtimeTruth.liveSessions,
+      value: healthSnapshot?.runtime.activeSessions ?? 0,
+      width: toTracePercent(healthSnapshot?.runtime.activeSessions ?? 0, 4),
     },
     {
-      key: 'active',
-      label: homeCopy.heroStackLabels.active,
-      body: homeCopy.heroBriefs.active(homeMetrics.activeCount, homeMetrics.activeExecutions),
-      value: `${homeMetrics.activeExecutions}`,
-      toneClass: homeMetrics.activeExecutions > 0 || homeMetrics.activeCount > 0 ? 'info' : 'neutral',
+      key: 'agents',
+      label: homeCopy.runtimeTruth.activeAgents,
+      value: homeMetrics.participantCount,
+      width: toTracePercent(homeMetrics.participantCount, 18),
     },
     {
-      key: 'governance',
-      label: homeCopy.heroStackLabels.governance,
-      body: homeCopy.heroBriefs.governance(healthSnapshot?.runtime.status ?? '—', homeMetrics.hostLoadLabel),
-      value: healthSnapshot?.runtime.status ?? '—',
-      toneClass: healthSnapshot?.runtime.status === 'healthy' ? 'success' : 'warning',
+      key: 'executions',
+      label: homeCopy.runtimeTruth.sloCompliance,
+      value: governanceSnapshot?.activeExecutions ?? 0,
+      width: toTracePercent(governanceSnapshot?.activeExecutions ?? 0, 16),
     },
   ];
+  const nowLabel = new Intl.DateTimeFormat(i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }).format(new Date());
 
-  const handleSelectRailTask = async (taskId: string) => {
-    setRailTaskId(taskId);
-    await selectTask(taskId);
-  };
+  useEffect(() => {
+    if (!focusTask || selectedTaskStatus?.task.id === focusTask.id) {
+      return;
+    }
 
-  const handleReviewDecision = async (decision: 'approve' | 'reject') => {
-    if (!focusReview) {
+    void selectTask(focusTask.id);
+  }, [focusTask, selectTask, selectedTaskStatus?.task.id]);
+
+  const handleReviewDecision = async (task: Task | null, decision: 'approve' | 'reject') => {
+    if (!task) {
+      return;
+    }
+
+    if (!isReviewActionable(task, sessionAccountId)) {
       return;
     }
 
     try {
-      await resolveReview(focusReview.id, decision, '');
+      await resolveReview(task.id, decision, '');
       showMessage(
         decision === 'approve' ? t('feedback.reviewApproveTitle') : t('feedback.reviewRejectTitle'),
         decision === 'approve' ? t('feedback.reviewApproveDetail') : t('feedback.reviewRejectDetail'),
@@ -371,497 +409,411 @@ export function DashboardHome() {
     }
   };
 
-  const handleSynthesis = async () => {
-    if (!focusReview) {
-      navigate('/reviews?scope=assigned');
-      return;
-    }
-    navigate(`/reviews?scope=assigned&selected=${focusReview.id}`);
-  };
-
-  const shiftReview = (direction: 'previous' | 'next') => {
-    if (reviewDeckItems.length === 0) {
-      return;
-    }
-
-    setReviewIndex(() => {
-      if (direction === 'previous') {
-        return currentReviewIndex === 0 ? reviewDeckItems.length - 1 : currentReviewIndex - 1;
-      }
-      return currentReviewIndex === reviewDeckItems.length - 1 ? 0 : currentReviewIndex + 1;
-    });
+  const handleSelectFocusTask = async (taskId: string) => {
+    setSelectedFocusTaskId(taskId);
+    await selectTask(taskId);
   };
 
   return (
-    <div className="home-os">
-      <section className="home-os__grid">
-        <article className="home-os__main-column surface-panel surface-panel--workspace">
-          <div className="home-os__hero">
-            <div className="home-os__hero-block">
-              <p className="page-kicker">{homeCopy.kicker}</p>
-              <h2 className="home-os__display">{homeCopy.title}</h2>
-              <p className="home-os__signature">{homeCopy.architectureLabel}</p>
-              <div className="home-os__visual-zone">
-                <HomeSignalField testId="home-signal-field" />
-              </div>
+    <div className="home-mgo interior-page">
+      <section className="home-mgo__hero surface-panel surface-panel--workspace">
+        <div className="home-mgo__hero-copy">
+          <p className="page-kicker">{homeCopy.hero.greetingKicker}</p>
+          <h1 className="home-mgo__hero-title">
+            {homeCopy.hero.greetingTitle(sessionUsername || homeCopy.hero.fallbackName)}
+          </h1>
+          <p className="type-body-lg home-mgo__hero-summary">{homeCopy.hero.summary}</p>
+          <p className="type-text-sm home-mgo__hero-time">{nowLabel}</p>
+        </div>
+
+        <div className="home-mgo__hero-signal">
+          <HomeSignalField testId="home-signal-field" className="home-mgo__signal-field" />
+        </div>
+
+        <div className="home-mgo__posture">
+          <div className="home-mgo__posture-head">
+            <p className="page-kicker">{homeCopy.posture.kicker}</p>
+            <span className={`status-pill ${healthSnapshot?.runtime.status === 'healthy' ? 'status-pill--success' : 'status-pill--warning'}`}>
+              {healthSnapshot?.runtime.status === 'healthy' ? homeCopy.posture.healthy : homeCopy.posture.degraded}
+            </span>
+          </div>
+          <h2 className="home-mgo__posture-title">
+            {homeCopy.posture.title}
+            {' '}
+            <span className={healthSnapshot?.runtime.status === 'healthy' ? 'text-success' : 'text-warning'}>
+              {healthSnapshot?.runtime.status === 'healthy' ? homeCopy.posture.healthy : homeCopy.posture.degraded}
+            </span>
+          </h2>
+          <div className="home-mgo__posture-strip">
+            <div className="home-mgo__posture-item">
+              <CheckCircle2 size={14} />
+              <span>{homeCopy.posture.runtimeNominal}</span>
             </div>
-            <div className="home-os__hero-block home-os__hero-block--copy">
-              <div className="home-os__hero-summary">
-                <p className="page-kicker">{homeCopy.heroStatusLabel}</p>
-                <div className="home-os__orbital-stack">
-                  {heroStrips.map((strip, index) => (
-                    <motion.article
-                      key={strip.key}
-                      className={`home-os__orbital-readout home-os__orbital-readout--${strip.key}`}
-                      initial={{ opacity: 0, y: 18, filter: 'blur(10px)' }}
-                      animate={{
-                        opacity: 1,
-                        y: 0,
-                        filter: 'blur(0px)',
-                      }}
-                      transition={{
-                        duration: motionMode === 'full' ? 0.56 : 0.32,
-                        delay: index * 0.08,
-                        ease: [0.16, 1, 0.3, 1],
-                      }}
-                    >
-                      <div className="home-os__orbital-copy">
-                        <p className="home-os__orbital-label">{strip.label}</p>
-                        <p className="home-os__orbital-body">{strip.body}</p>
-                      </div>
-                      <div className="home-os__orbital-core" aria-hidden="true">
-                        <motion.span
-                          className="home-os__orbital-ring home-os__orbital-ring--outer"
-                          animate={
-                            motionMode === 'full'
-                              ? { scale: [0.96, 1.04, 0.96], opacity: [0.24, 0.52, 0.24], rotate: [0, 18, 0] }
-                              : { scale: 1, opacity: 0.28, rotate: 0 }
-                          }
-                          transition={{ duration: 3.6, repeat: Infinity, ease: 'easeInOut' }}
-                        />
-                        <motion.span
-                          className="home-os__orbital-ring home-os__orbital-ring--inner"
-                          animate={
-                            motionMode === 'full'
-                              ? { scale: [1.02, 0.96, 1.02], opacity: [0.4, 0.72, 0.4], rotate: [0, -24, 0] }
-                              : { scale: 1, opacity: 0.46, rotate: 0 }
-                          }
-                          transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
-                        />
-                        <motion.span
-                          className="home-os__orbital-core-dot"
-                          animate={
-                            motionMode === 'full'
-                              ? { scale: [0.92, 1.08, 0.92], opacity: [0.72, 1, 0.72] }
-                              : { scale: 1, opacity: 0.82 }
-                          }
-                          transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-                        />
-                        <span className={`home-os__orbital-value home-os__orbital-value--${strip.toneClass}`}>{strip.value}</span>
-                      </div>
-                    </motion.article>
-                  ))}
-                </div>
-              </div>
-              <div className="home-os__header-actions">
-                <Link to="/projects" className="button-primary">
-                  {homeCopy.primaryAction}
-                  <ArrowRight size={16} />
-                </Link>
-                <Link to="/reviews" className="button-secondary">
-                  {homeCopy.secondaryAction}
-                </Link>
-                <Link to="/agents" className="button-secondary">
-                  {homeCopy.tertiaryAction}
-                </Link>
-              </div>
+            <div className="home-mgo__posture-item">
+              <ShieldCheck size={14} />
+              <span>{homeCopy.posture.auditLive}</span>
+            </div>
+            <div className="home-mgo__posture-item">
+              <Sparkles size={14} />
+              <span>{homeCopy.posture.referencesReady}</span>
             </div>
           </div>
+        </div>
+      </section>
 
-          {error ? (
-            <div role="alert" className="inline-alert inline-alert--danger home-os__error">{homeCopy.syncErrorMessage}</div>
-          ) : null}
+      {error ? (
+        <div role="alert" className="inline-alert inline-alert--danger home-mgo__error">{homeCopy.syncErrorMessage}</div>
+      ) : null}
 
-          <div className="home-os__main-section">
-            <div className="home-os__module-head">
-              <div>
-                <p className="home-os__section-index">{homeCopy.sectionLabels.archon}</p>
-                <p className="page-kicker">{homeCopy.commandAuthorityLabel}</p>
-              </div>
-              <div className="home-os__review-deck-controls">
-                <span className="status-pill status-pill--info">
-                  {homeMetrics.waitingCount}
-                  {homeCopy.reviewCountUnit}
-                </span>
-                <button
-                  type="button"
-                  className="home-os__deck-button"
-                  onClick={() => shiftReview('previous')}
-                  disabled={reviewDeckItems.length <= 1}
-                  aria-label={homeCopy.reviewDeck.previous}
-                >
-                  <ChevronLeft size={14} />
-                </button>
-                <span className="home-os__deck-position">
-                  {homeCopy.reviewDeck.position} {reviewDeckItems.length === 0 ? '0 / 0' : `${currentReviewIndex + 1} / ${reviewDeckItems.length}`}
-                </span>
-                <button
-                  type="button"
-                  className="home-os__deck-button"
-                  onClick={() => shiftReview('next')}
-                  disabled={reviewDeckItems.length <= 1}
-                  aria-label={homeCopy.reviewDeck.next}
-                >
-                  <ChevronRight size={14} />
-                </button>
-              </div>
+      <section className="home-mgo__grid">
+        <article className="home-mgo__queue surface-panel surface-panel--workspace">
+          <div className="home-mgo__section-head">
+            <div>
+              <p className="page-kicker">{homeCopy.queue.kicker}</p>
+              <h2 className="section-title">{homeCopy.queue.title}</h2>
             </div>
+            <Link to="/reviews" className="text-action">
+              {homeCopy.queue.viewAll}
+              <ArrowRight size={14} />
+            </Link>
+          </div>
 
-            <div className="home-os__authority surface-panel surface-panel--muted">
-              <p className="page-kicker home-os__authority-kicker">{homeCopy.pendingResolutionLabel}</p>
-              <h3 className="home-os__authority-title">{authorityTitle}</h3>
-              <div className="home-os__authority-grid">
-                <div className="home-os__authority-stat">
-                  <span className="page-kicker">{homeCopy.resolutionMeta.gate}</span>
-                  <strong>{authorityGate}</strong>
-                </div>
-                <div className="home-os__authority-stat">
-                  <span className="page-kicker">{homeCopy.resolutionMeta.stage}</span>
-                  <strong>{authorityStage}</strong>
-                </div>
-              </div>
-              <p className="type-body-sm">{authoritySummary}</p>
-              {focusReview && !canResolveReview ? (
-                <p className="type-text-xs">{homeCopy.resolutionReadOnlyNotice}</p>
-              ) : null}
-              <div className="home-os__authority-actions">
-                <button type="button" className="button-primary" disabled={!canResolveReview} onClick={() => void handleReviewDecision('approve')}>
-                  {homeCopy.resolutionActions.authorize}
-                </button>
-                <button type="button" className="button-danger" disabled={!canResolveReview} onClick={() => void handleReviewDecision('reject')}>
-                  {homeCopy.resolutionActions.veto}
-                </button>
-                <button type="button" className="button-secondary home-os__authority-secondary" onClick={() => void handleSynthesis()}>
-                  {homeCopy.resolutionActions.synthesize}
-                </button>
-              </div>
-            </div>
-
-            {summaryReady ? (
-              <div className="home-os__load surface-panel surface-panel--muted page-transition">
-                <div className="home-os__module-head">
-                  <p className="page-kicker">{homeCopy.systemLoadLabel}</p>
-                  <span className="home-os__load-value">{homeCopy.loadReadoutLabel}: {loadPercent}%</span>
-                </div>
-                <div className="home-os__load-bar">
-                  <div className="home-os__load-fill" style={{ '--load-width': `${loadPercent}%` } as CSSProperties} />
-                  <div className="home-os__load-marker" style={{ '--load-width': `${loadPercent}%` } as CSSProperties} />
-                </div>
-
-                <div className="home-os__metrics">
-                  <div className="inline-stat">
-                    <span className="inline-stat__label">{homeCopy.metricLabels.active}</span>
-                    <span className="inline-stat__value">{homeMetrics.activeCount}</span>
-                  </div>
-                  <div className="inline-stat">
-                    <span className="inline-stat__label">{homeCopy.metricLabels.waiting}</span>
-                    <span className="inline-stat__value">{homeMetrics.waitingCount}</span>
-                  </div>
-                  <div className="inline-stat">
-                    <span className="inline-stat__label">{homeCopy.metricLabels.latestCompleted}</span>
-                    <span className="inline-stat__value">{homeMetrics.latestCompletedLabel}</span>
-                  </div>
-                  <div className="inline-stat">
-                    <span className="inline-stat__label">{homeCopy.metricLabels.activeExecutions}</span>
-                    <span className="inline-stat__value">{homeMetrics.activeExecutions}</span>
-                  </div>
-                  <div className="inline-stat">
-                    <span className="inline-stat__label">{homeCopy.metricLabels.hostLoad}</span>
-                    <span className="inline-stat__value">{homeMetrics.hostLoadLabel}</span>
-                  </div>
-                </div>
-                <p className="home-os__load-note">{homeCopy.loadEstimateNote}</p>
-              </div>
+          <div className="home-mgo__queue-list">
+            {prioritizedActions.length === 0 ? (
+              <p className="type-body-sm">{homeCopy.queue.empty}</p>
             ) : (
-              <div className="home-os__summary-loading" aria-hidden="true">
-                <Skeleton variant="row" />
-                <Skeleton variant="card" />
-              </div>
-            )}
-          </div>
-        </article>
-
-        <aside className="home-os__rail-column">
-          <article className="home-os__rail-panel surface-panel surface-panel--workspace">
-            <div className="home-os__module-head">
-              <div>
-                <p className="home-os__section-index">{homeCopy.sectionLabels.agora}</p>
-                <p className="page-kicker">{homeCopy.topologyLabel}</p>
-              </div>
-              <span className="status-pill status-pill--neutral">{railTasks.length}</span>
-            </div>
-
-            <div className="home-os__task-selector">
-              {loading
-                ? Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} variant="card" />)
-               : visibleRailTasks.length === 0
-                  ? <p className="type-body-sm">{homeCopy.feedEmpty}</p>
-                  : visibleRailTasks.map((task) => {
-                    const tone = getProposalTone(task.state);
-                    return (
-                      <button
-                        key={task.id}
-                        type="button"
-                        className={task.id === selectedRailTask?.id ? 'home-os__task-chip home-os__task-chip--active' : 'home-os__task-chip'}
-                        onClick={() => void handleSelectRailTask(task.id)}
-                      >
-                        <div className="home-os__task-chip-stack">
-                          <div className="home-os__proposal-head">
-                            <div>
-                              <p className="home-os__proposal-title">{task.title}</p>
-                              <p className="type-mono-sm">{task.id}</p>
-                            </div>
-                            <span className={`home-os__proposal-stance home-os__proposal-stance--${tone}`}>
-                              {getProposalToneLabel(tone, homeCopy.proposalToneLabels)}
-                            </span>
-                          </div>
-                          <p className="home-os__task-chip-context">{task.teamLabel} / {task.workflowLabel}</p>
-                          <div className="home-os__proposal-meta">
-                            <span>{task.stageName ?? task.current_stage ?? homeCopy.taskRailLabels.stageFallback}</span>
-                            <span>{formatRelativeTimestamp(task.updated_at)}</span>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-            </div>
-
-            <div className="home-os__section-divider" />
-
-            {railReady && selectedRailTask ? (
-              <>
-                {isMobile ? (
-                  <section className="home-os__rail-summary">
-                    <div className="home-os__module-head home-os__module-head--compact">
-                      <div>
-                        <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
-                        <p className="page-kicker">{homeCopy.taskRailLabels.selectedTask}</p>
-                      </div>
-                      <span className="status-pill status-pill--info">
-                        {selectedRailTask.stageName ?? selectedRailTask.current_stage ?? homeCopy.taskRailLabels.stageFallback}
+              prioritizedActions.map((task) => {
+                const actionable = isReviewActionable(task, sessionAccountId);
+                return (
+                  <article key={task.id} className={`home-mgo__queue-card home-mgo__queue-card--${getPriorityTone(task)}`}>
+                    <div className="home-mgo__queue-meta">
+                      <span className="type-text-xs">{task.current_stage ?? homeCopy.queue.stageFallback}</span>
+                      <span className={`status-pill ${getPriorityTone(task) === 'critical' ? 'status-pill--danger' : 'status-pill--warning'}`}>
+                        {task.priority === 'high' ? homeCopy.queue.highImpact : homeCopy.queue.mediumImpact}
                       </span>
                     </div>
-                    <div className="home-os__task-chip-stack">
-                      <div className="home-os__proposal-head">
-                        <div>
-                          <p className="home-os__proposal-title">{selectedRailTask.title}</p>
-                          <p className="type-mono-sm">{selectedRailTask.id}</p>
-                        </div>
-                        <span className={`home-os__proposal-stance home-os__proposal-stance--${getProposalTone(selectedRailTask.state)}`}>
-                          {getProposalToneLabel(getProposalTone(selectedRailTask.state), homeCopy.proposalToneLabels)}
-                        </span>
-                      </div>
-                      <p className="home-os__task-chip-context">{selectedRailSummaryParts.join(' / ')}</p>
-                      <div className="home-os__proposal-meta">
-                        <span>{selectedRailTask.gateType ?? homeCopy.resolutionFallbacks.gate}</span>
-                        <span>{formatRelativeTimestamp(selectedRailTask.updated_at)}</span>
+                    <h3 className="home-mgo__queue-title">{task.title}</h3>
+                    <p className="type-text-sm">
+                      {homeCopy.queue.projectLabel}
+                      {' '}
+                      {task.workflowLabel}
+                      {' • '}
+                      {homeCopy.queue.taskLabel}
+                      {' '}
+                      {task.id}
+                    </p>
+                    <div className="home-mgo__queue-footer">
+                      <span className="type-text-xs">{formatRelativeTimestamp(task.updated_at)}</span>
+                      <div className="home-mgo__queue-actions">
+                        <Link className="button-secondary home-mgo__queue-link" to={`/reviews?scope=assigned&selected=${task.id}`}>
+                          {homeCopy.queue.openReview}
+                        </Link>
+                        {actionable ? (
+                          <button type="button" className="button-secondary home-mgo__queue-link" onClick={() => void handleReviewDecision(task, 'approve')}>
+                            {homeCopy.queue.quickApprove}
+                          </button>
+                        ) : null}
                       </div>
                     </div>
-                  </section>
-                ) : (
-                  <>
-                    <section className="home-os__rail-block">
-                      <div className="home-os__module-head">
-                        <div>
-                          <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
-                          <p className="page-kicker">{homeCopy.taskRailLabels.executionLoop}</p>
-                        </div>
-                        <Network size={16} className="home-os__rail-icon" />
-                      </div>
-
-                      <div className="home-os__dag-board">
-                        {executionLanes.map((lane) => (
-                          <div key={lane.stageId} className="home-os__dag-stage">
-                            <p className="home-os__dag-stage-label">{lane.stageId}</p>
-                            <div className="home-os__dag-stage-items">
-                              {lane.items.map((item) => (
-                                <div key={item.id} className="home-os__dag-node">
-                                  <strong>{item.title}</strong>
-                                  <span>{item.assignee}</span>
-                                  <span className="home-os__dag-node-status">{item.status}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-
-                    <section className="home-os__rail-block home-os__rail-block--terminal">
-                      <div className="home-os__module-head">
-                        <div>
-                          <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
-                          <p className="page-kicker">{homeCopy.terminalLabel}</p>
-                        </div>
-                        <ScrollText size={16} className="home-os__rail-icon" />
-                      </div>
-
-                      <div className="home-os__module-head">
-                        <h3 className="section-title">{homeCopy.taskRailLabels.runtimeLog}</h3>
-                        <span className="status-pill status-pill--info">{homeCopy.terminalStatusPrefix}</span>
-                      </div>
-
-                      <div className="home-os__terminal">
-                        {runtimeLines.length === 0 ? (
-                          <p className="type-body-sm">{homeCopy.taskRailLabels.logEmpty}</p>
-                        ) : (
-                          runtimeLines.map((line, index) => (
-                            <div key={line.id} className="home-os__terminal-line terminal-entry">
-                              <span className="home-os__terminal-prefix">[{String(index + 1).padStart(2, '0')}]</span>
-                              <div className="home-os__terminal-body">
-                                <div className="home-os__terminal-head">
-                                  <span className="home-os__terminal-token">{line.prefix}</span>
-                                  <span>{line.title}</span>
-                                  <span className="home-os__terminal-meta">{line.meta}</span>
-                                </div>
-                                <span>{line.body}</span>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </section>
-                  </>
-                )}
-              </>
-            ) : (
-              <div className="home-os__rail-empty">
-                {railReady ? (
-                  <p className="type-body-sm">
-                    {visibleRailTasks.length > 0
-                      ? homeCopy.taskRailLabels.focusPrompt
-                      : homeCopy.taskRailLabels.taskEmpty}
-                  </p>
-                ) : (
-                  <div className="home-os__rail-loading">
-                    <Skeleton variant="card" />
-                    <Skeleton variant="card" />
-                  </div>
-                )}
-              </div>
+                  </article>
+                );
+              })
             )}
+          </div>
+          <p className="type-text-xs home-mgo__queue-note">
+            {homeCopy.queue.showing(prioritizedActions.length, homeMetrics.waitingCount)}
+          </p>
+        </article>
 
-            {summaryReady ? (
-              <div className="space-y-4 page-transition">
-                <div className="home-os__telemetry-strip">
-                  <div className="home-os__telemetry-readout">
-                    <span className="home-os__telemetry-label">{homeCopy.metricLabels.participants}</span>
-                    <strong className="home-os__telemetry-value">{homeMetrics.participantCount}</strong>
+        <article className="home-mgo__focus surface-panel surface-panel--workspace">
+          <div className="home-mgo__section-head">
+            <div>
+              <p className="page-kicker">{homeCopy.focus.kicker}</p>
+              <h2 className="section-title">{homeCopy.focus.title}</h2>
+            </div>
+            <Link to={focusWorkspaceHref} className="button-secondary home-mgo__focus-link">
+              {homeCopy.focus.openWorkspace}
+              <ArrowRight size={14} />
+            </Link>
+          </div>
+
+          {focusTask ? (
+            <>
+              <section className="home-mgo__focus-card">
+                <div className="home-mgo__focus-card-head">
+                  <div>
+                    <p className="page-kicker">{homeCopy.focus.portfolioLabel}</p>
+                    <h3 className="home-mgo__focus-name">{focusTask.title}</h3>
+                    <p className="type-text-sm home-mgo__focus-meta">
+                      {focusTask.projectId ?? focusTask.workflowLabel}
+                      {' • '}
+                      {homeCopy.focus.ownerLabel}
+                      {' '}
+                      {focusTask.creator}
+                    </p>
+                  </div>
+                  <span className="status-pill status-pill--info">
+                    {focusTask.state === 'in_progress' ? homeCopy.focus.inProgress : homeCopy.focus.active}
+                  </span>
+                </div>
+
+                <div className="home-mgo__focus-work">
+                  <div className="home-mgo__focus-work-head">
+                    <div>
+                      <p className="page-kicker">{homeCopy.focus.activeWorkLabel}</p>
+                      <h4 className="home-mgo__focus-work-title">{focusTask.title}</h4>
+                    </div>
+                    <span className="type-text-xs">{focusTask.stageName ?? focusTask.current_stage ?? homeCopy.focus.stageFallback}</span>
+                  </div>
+                  <p className="type-body-sm">{focusTask.description ?? homeCopy.focus.noDescription}</p>
+                  <div className="home-mgo__progress-row">
+                    <span>{homeCopy.focus.startedLabel} {formatRelativeTimestamp(focusTask.created_at)}</span>
+                    <span>{getProgressValue(focusTask)}%</span>
+                  </div>
+                  <div className="home-mgo__progress-bar">
+                    <span style={fillStyle(getProgressValue(focusTask))} />
+                  </div>
+                  <div className="home-mgo__focus-stats">
+                    <div className="home-mgo__mini-stat">
+                      <span>{homeCopy.focus.runtimeTargetLabel}</span>
+                      <strong>{focusTask.teamMembers?.[0]?.runtime_target_ref ?? focusTask.teamLabel}</strong>
+                    </div>
+                    <div className="home-mgo__mini-stat">
+                      <span>{homeCopy.focus.participantsLabel}</span>
+                      <strong>{focusTask.memberCount}</strong>
+                    </div>
+                    <div className="home-mgo__mini-stat">
+                      <span>{homeCopy.focus.agentsLabel}</span>
+                      <strong>{focusTask.teamMembers?.length ?? 0}</strong>
+                    </div>
+                    <div className="home-mgo__mini-stat">
+                      <span>{homeCopy.focus.healthLabel}</span>
+                      <strong>{healthSnapshot?.runtime.status === 'healthy' ? homeCopy.posture.healthy : homeCopy.posture.degraded}</strong>
+                    </div>
                   </div>
                 </div>
-                {governanceSnapshot ? (
-                  <section className="surface-panel surface-panel--muted">
-                    <div className="home-os__module-head">
-                      <div>
-                        <p className="home-os__section-index">{homeCopy.governance.kicker}</p>
-                        <p className="page-kicker">{homeCopy.governance.title}</p>
-                      </div>
-                      <span className="status-pill status-pill--info">{homeMetrics.activeExecutions}</span>
-                    </div>
-                    <div className="task-authority__facts mt-4">
-                      <div className="detail-card">
-                        <PanelRightOpen size={16} className="detail-card__icon" />
-                        <span className="detail-card__label">{homeCopy.metricLabels.activeExecutions}</span>
-                        <strong className="detail-card__value">{homeMetrics.activeExecutions}</strong>
-                      </div>
-                      <div className="detail-card">
-                        <Clock3 size={16} className="detail-card__icon" />
-                        <span className="detail-card__label">{homeCopy.metricLabels.hostLoad}</span>
-                        <strong className="detail-card__value">{homeMetrics.hostLoadLabel}</strong>
-                      </div>
-                      <div className="detail-card">
-                        <Clock3 size={16} className="detail-card__icon" />
-                        <span className="detail-card__label">{homeCopy.governance.hostMemory}</span>
-                        <strong className="detail-card__value">
-                          {formatGovernanceMemoryValue(governanceSnapshot)}
-                        </strong>
-                      </div>
-                      <div className="detail-card">
-                        <Network size={16} className="detail-card__icon" />
-                        <span className="detail-card__label">{homeCopy.governance.pressureStatus}</span>
-                        <strong className="detail-card__value">{governanceSnapshot.hostPressureStatus}</strong>
-                      </div>
-                      <div className="detail-card">
-                        <Network size={16} className="detail-card__icon" />
-                        <span className="detail-card__label">{homeCopy.governance.runtimeStatus}</span>
-                        <strong className="detail-card__value">{healthSnapshot?.runtime.status ?? '—'}</strong>
-                      </div>
-                      <div className="detail-card">
-                        <Network size={16} className="detail-card__icon" />
-                        <span className="detail-card__label">{homeCopy.governance.escalationStatus}</span>
-                        <strong className="detail-card__value">{healthSnapshot?.escalation.status ?? '—'}</strong>
-                      </div>
-                    </div>
-                    <div className="mt-4 space-y-2">
-                      <p className="field-label">{homeCopy.governance.assigneeTitle}</p>
-                      {governanceSnapshot.activeByAssignee.length > 0 ? (
-                        <ul className="space-y-2">
-                          {governanceSnapshot.activeByAssignee.map((item) => (
-                            <li key={item.assignee} className="data-row">
-                              <span className="type-mono-xs">{item.assignee}</span>
-                              <span className="status-pill status-pill--neutral">{item.count}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="type-body-sm">{homeCopy.governance.emptyAssignee}</p>
-                      )}
-                    </div>
-                    <div className="mt-4 space-y-2">
-                      <p className="field-label">{homeCopy.governance.warningsTitle}</p>
-                      {(governanceSnapshot.warnings ?? []).length > 0 ? (
-                        <ul className="space-y-2">
-                          {(governanceSnapshot.warnings ?? []).map((warning) => (
-                            <li key={warning} className="data-row">
-                              <span className="type-body-sm">{warning}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="type-body-sm">{homeCopy.governance.emptyWarnings}</p>
-                      )}
-                    </div>
-                    <div className="mt-4 space-y-2">
-                      <p className="field-label">{homeCopy.governance.executionDetailsTitle}</p>
-                      {(governanceSnapshot.activeExecutionDetails ?? []).length > 0 ? (
-                        <ul className="space-y-2">
-                          {(governanceSnapshot.activeExecutionDetails ?? []).slice(0, 4).map((detail) => (
-                            <li key={detail.executionId} className="data-row">
-                              <div className="min-w-0 flex-1">
-                                <p className="type-mono-xs">{detail.executionId}</p>
-                                <p className="type-text-xs mt-1">
-                                  {detail.assignee}
-                                  {' / '}
-                                  {detail.adapter}
-                                  {' / '}
-                                  {detail.status}
-                                </p>
-                              </div>
-                              <span className="status-pill status-pill--neutral">{detail.subtaskId}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="type-body-sm">{homeCopy.governance.emptyExecutionDetails}</p>
-                      )}
-                    </div>
-                  </section>
-                ) : null}
+
+                <section className="home-mgo__context-glance">
+                  <p className="page-kicker">{homeCopy.focus.contextGlanceLabel}</p>
+                  <div className="home-mgo__tag-strip">
+                    {focusSelectionTags.length > 0 ? (
+                      focusSelectionTags.map((member) => (
+                        <span key={`${member.agentId}-${member.role}`} className="home-mgo__context-tag">
+                          {member.runtime_flavor ?? member.role}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="type-text-xs">{homeCopy.focus.contextFallback}</span>
+                    )}
+                  </div>
+                </section>
+
+                <div className="home-mgo__focus-next">
+                  <span className="type-text-sm">
+                    {reviewFocus ? homeCopy.focus.nextUp(reviewFocus.title) : homeCopy.focus.noPendingReview}
+                  </span>
+                  {reviewFocus ? (
+                    <Link to={`/reviews?scope=assigned&selected=${reviewFocus.id}`} className="text-action">
+                      {homeCopy.focus.reviewDue}
+                      <ChevronRight size={14} />
+                    </Link>
+                  ) : null}
+                </div>
+              </section>
+
+            </>
+          ) : (
+            <div className="home-mgo__focus-empty">
+              <p className="type-body-sm">{homeCopy.focus.empty}</p>
+              <Link to="/projects" className="button-primary">{homeCopy.primaryAction}</Link>
+            </div>
+          )}
+        </article>
+
+        <aside className="home-mgo__rail">
+          <section className="home-mgo__rail-panel surface-panel surface-panel--workspace">
+            <div className="home-mgo__section-head home-mgo__section-head--compact">
+              <div>
+                <p className="page-kicker">{homeCopy.runtimeTruth.kicker}</p>
+                <h2 className="section-title">{homeCopy.runtimeTruth.title}</h2>
               </div>
-            ) : null}
-          </article>
+              <span className={`status-pill ${healthSnapshot?.runtime.status === 'healthy' ? 'status-pill--success' : 'status-pill--warning'}`}>
+                {healthSnapshot?.runtime.status === 'healthy' ? homeCopy.posture.healthy : homeCopy.posture.degraded}
+              </span>
+            </div>
+            {summaryReady ? (
+              <div className="home-mgo__truth-card">
+                <div className="home-mgo__truth-graph" aria-label={homeCopy.runtimeTruth.title}>
+                  {runtimeTruthSignals.map((signal) => (
+                    <div key={signal.key} className="home-mgo__truth-trace">
+                      <span>{signal.label}</span>
+                      <strong>{signal.value}</strong>
+                      <i style={fillStyle(signal.width)} />
+                    </div>
+                  ))}
+                </div>
+                <div className="home-mgo__truth-metrics">
+                  <div className="home-mgo__mini-stat">
+                    <span>{homeCopy.runtimeTruth.liveSessions}</span>
+                    <strong>{healthSnapshot?.runtime.activeSessions ?? 0}</strong>
+                  </div>
+                  <div className="home-mgo__mini-stat">
+                    <span>{homeCopy.runtimeTruth.activeAgents}</span>
+                    <strong>{homeMetrics.participantCount}</strong>
+                  </div>
+                  <div className="home-mgo__mini-stat">
+                    <span>{homeCopy.runtimeTruth.sloCompliance}</span>
+                    <strong>{governanceSnapshot?.activeExecutions ?? 0}</strong>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <Skeleton variant="card" />
+            )}
+          </section>
+
+          <section className="home-mgo__rail-panel surface-panel surface-panel--workspace">
+            <div className="home-mgo__section-head home-mgo__section-head--compact">
+              <div>
+                <p className="page-kicker">{homeCopy.audit.kicker}</p>
+                <h2 className="section-title">{homeCopy.audit.title}</h2>
+              </div>
+              <span className="status-pill status-pill--neutral">{homeCopy.audit.live}</span>
+            </div>
+            {railReady ? (
+              <div className="home-mgo__audit-list">
+                {auditTrail.map((entry) => (
+                  <div key={entry.id} className="home-mgo__audit-entry">
+                    <span className={`home-mgo__audit-dot home-mgo__audit-dot--${entry.tone}`} />
+                    <div className="home-mgo__audit-copy">
+                      <strong>{entry.title}</strong>
+                      <span>{entry.actor}</span>
+                    </div>
+                    <span className="type-text-xs">{entry.time}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Skeleton variant="card" />
+            )}
+          </section>
+
+          <section className="home-mgo__rail-panel surface-panel surface-panel--workspace">
+            <div className="home-mgo__section-head home-mgo__section-head--compact">
+              <div>
+                <p className="page-kicker">{homeCopy.integrity.kicker}</p>
+                <h2 className="section-title">{homeCopy.integrity.title}</h2>
+              </div>
+              <span className={`status-pill ${referenceIntegrity.runtimeWarnings > 0 ? 'status-pill--warning' : 'status-pill--success'}`}>
+                {referenceIntegrity.runtimeWarnings > 0 ? homeCopy.integrity.good : homeCopy.integrity.healthy}
+              </span>
+            </div>
+            {summaryReady ? (
+              <div className="home-mgo__integrity-list">
+                <div className="data-row">
+                  <span>{homeCopy.integrity.taskRecords}</span>
+                  <strong>{referenceIntegrity.taskRecords.toLocaleString()}</strong>
+                </div>
+                <div className="data-row">
+                  <span>{homeCopy.integrity.runtimeWarnings}</span>
+                  <strong>{referenceIntegrity.runtimeWarnings}</strong>
+                </div>
+                <div className="data-row">
+                  <span>{homeCopy.integrity.hostPressure}</span>
+                  <strong>{referenceIntegrity.hostPressure}</strong>
+                </div>
+                <div className="data-row">
+                  <span>{homeCopy.integrity.bridgeBindings}</span>
+                  <strong>{referenceIntegrity.bridgeBindings}</strong>
+                </div>
+              </div>
+            ) : (
+              <Skeleton variant="card" />
+            )}
+          </section>
         </aside>
       </section>
+
+      <section className="home-mgo__project-cards surface-panel surface-panel--workspace">
+        <div className="home-mgo__section-head home-mgo__section-head--compact">
+          <div>
+            <p className="page-kicker">{homeCopy.activeProjects.kicker}</p>
+            <h3 className="section-title">{homeCopy.activeProjects.title}</h3>
+          </div>
+        </div>
+        <div className="home-mgo__project-grid">
+          {activeProjectCards.map((project) => (
+            <article
+              key={project.key}
+              className={`home-mgo__project-card home-mgo__project-card--${getProjectTone(project.focusTask)}${project.focusTask.id === focusTask?.id ? ' is-selected' : ''}`}
+            >
+              <div className="home-mgo__project-card-head">
+                <h4>{project.title}</h4>
+                <span className="status-pill status-pill--neutral">
+                  {project.taskCount} {homeCopy.capabilityStrip.items}
+                </span>
+              </div>
+              <div className="home-mgo__progress-row">
+                <span>{homeCopy.activeProjects.progressLabel}</span>
+                <span>{getProgressValue(project.focusTask)}%</span>
+              </div>
+              <div className="home-mgo__progress-bar home-mgo__progress-bar--compact">
+                <span style={fillStyle(getProgressValue(project.focusTask))} />
+              </div>
+              <p className="type-text-sm">{project.summary ?? homeCopy.focus.noDescription}</p>
+              <div className="home-mgo__project-card-footer">
+                <button type="button" className="text-action" onClick={() => void handleSelectFocusTask(project.focusTask.id)}>
+                  {homeCopy.focus.openFocus}
+                </button>
+                <span className={`home-mgo__project-signal home-mgo__project-signal--${getProjectTone(project.focusTask)}`}>
+                  {project.focusTask.state === 'gate_waiting' ? homeCopy.activeProjects.gatePending : homeCopy.activeProjects.noBlockers}
+                </span>
+                <Link className="text-action" to={buildProjectWorkHref(project.projectId)}>
+                  {homeCopy.activeProjects.openWorkspace}
+                </Link>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="home-mgo__capability-strip surface-panel surface-panel--workspace">
+        <div className="home-mgo__section-head home-mgo__section-head--compact">
+          <div>
+            <p className="page-kicker">{homeCopy.capabilityStrip.kicker}</p>
+            <h2 className="section-title">{homeCopy.capabilityStrip.title}</h2>
+          </div>
+          <Link to="/system" className="button-secondary home-mgo__capability-link">
+            {homeCopy.capabilityStrip.action}
+            <ArrowRight size={14} />
+          </Link>
+        </div>
+        <div className="home-mgo__capability-grid">
+          {capabilityItems.map((item) => (
+            <div key={item.key} className="home-mgo__capability-item">
+              <div className={`home-mgo__capability-icon home-mgo__capability-icon--${item.tone}`}>
+                {item.key === 'governance' ? <ShieldCheck size={16} /> : null}
+                {item.key === 'targets' ? <Sparkles size={16} /> : null}
+                {item.key === 'bridges' ? <Network size={16} /> : null}
+                {item.key === 'policies' ? <TriangleAlert size={16} /> : null}
+                {item.key === 'participants' ? <Gauge size={16} /> : null}
+              </div>
+              <div className="home-mgo__capability-copy">
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {!isMobile && isTablet ? (
+        <section className="home-mgo__tablet-note surface-panel surface-panel--muted">
+          <FolderOpen size={16} />
+          <span>{homeCopy.tabletNote}</span>
+          <Link to={focusHref} className="text-action">{homeCopy.focus.openFocus}</Link>
+        </section>
+      ) : null}
     </div>
   );
 }

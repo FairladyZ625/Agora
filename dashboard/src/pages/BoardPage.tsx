@@ -61,8 +61,8 @@ export function BoardPage() {
   const reviewColumn = columns.find((column) => column.state === 'gate_waiting');
 
   return (
-    <div className="space-y-6">
-      <section className="surface-panel surface-panel--workspace">
+    <div className="interior-page">
+      <section className="surface-panel surface-panel--workspace surface-panel--context-anchor">
         <div className="workbench-masthead">
           <div>
             <p className="page-kicker">{boardCopy.kicker}</p>

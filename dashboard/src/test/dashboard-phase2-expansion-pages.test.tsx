@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { MemoryRouter } from 'react-router';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '@/App';
 
@@ -26,6 +26,10 @@ vi.mock('@/stores/sessionStore', () => ({
     return selector ? selector(state) : state;
   },
 }));
+
+const participantInventoryButton = /^(参与清单|Participant inventory)$/i;
+const channelParticipationButton = /^(频道参与|Channel participation)$/i;
+const runtimeSessionsButton = /^(运行时会话|Runtime sessions)$/i;
 
 const agentStoreState = {
   summary: { activeTasks: 1, activeAgents: 1, totalAgents: 2, onlineAgents: 1, staleAgents: 1, disconnectedAgents: 0, busyCraftsmen: 1 },
@@ -189,6 +193,8 @@ const agentStoreState = {
       role: 'developer',
       status: 'busy',
       presence: 'online',
+      selectability: 'selectable',
+      selectabilityReason: 'active_assignment',
       presenceReason: 'live_session',
       channelProviders: ['discord'],
       hostFramework: 'openclaw' as string | null,
@@ -546,11 +552,11 @@ describe('dashboard expansion routes', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('heading', { name: '运行态' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Agent Agent 列表/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Channel Channel 健康/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Execution 执行运行态/i })).toBeInTheDocument();
-    expect(screen.getAllByText(/agora-craftsmen/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { name: '参与者' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: participantInventoryButton })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: channelParticipationButton })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: runtimeSessionsButton })).toBeInTheDocument();
+    expect(screen.getAllByText(/codex/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/discord/i).length).toBeGreaterThan(0);
   });
 
@@ -581,7 +587,7 @@ describe('dashboard expansion routes', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Execution 执行运行态/i }));
+    fireEvent.click(screen.getByRole('button', { name: runtimeSessionsButton }));
     fireEvent.click(screen.getByRole('button', { name: 'failures' }));
 
     expect(screen.getByText(/exec-failed-1/i)).toBeInTheDocument();
@@ -615,7 +621,7 @@ describe('dashboard expansion routes', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Execution 执行运行态/i }));
+    fireEvent.click(screen.getByRole('button', { name: runtimeSessionsButton }));
     const executionRows = screen.getAllByText(/exec-(dashboard|failed)-1/i);
     expect(executionRows[0]).toHaveTextContent('exec-failed-1');
     expect(executionRows[1]).toHaveTextContent('exec-dashboard-1');
@@ -651,7 +657,7 @@ describe('dashboard expansion routes', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Execution 执行运行态/i }));
+    fireEvent.click(screen.getByRole('button', { name: runtimeSessionsButton }));
     const executionRows = screen.getAllByText(/exec-(running|failed)-2/i);
     expect(executionRows[0]).toHaveTextContent('exec-failed-2');
     expect(executionRows[1]).toHaveTextContent('exec-running-2');
@@ -663,6 +669,8 @@ describe('dashboard expansion routes', () => {
       role: 'reviewer',
       status: 'idle',
       presence: 'stale',
+      selectability: 'selectable',
+      selectabilityReason: 'stale_observation',
       presenceReason: 'stale_gateway_log',
       channelProviders: ['discord'],
       hostFramework: null,
@@ -685,11 +693,12 @@ describe('dashboard expansion routes', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Agent Agent 列表/i }));
+    fireEvent.click(screen.getByRole('button', { name: participantInventoryButton }));
     fireEvent.click(screen.getByRole('button', { name: 'stale' }));
 
-    expect(screen.getAllByText('review').length).toBeGreaterThan(0);
-    expect(screen.queryByText('sonnet')).not.toBeInTheDocument();
+    const drawer = screen.getByRole('dialog', { name: /参与者明细工作区|Participant detail workspace/i });
+    expect(within(drawer).getAllByText('review').length).toBeGreaterThan(0);
+    expect(within(drawer).queryByText('sonnet')).not.toBeInTheDocument();
   });
 
   it('shows channel drill-down details for the selected channel', () => {
@@ -699,10 +708,10 @@ describe('dashboard expansion routes', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Channel Channel 健康/i }));
-    fireEvent.click(screen.getAllByRole('button', { name: /discord/i })[1]);
+    fireEvent.click(screen.getByRole('button', { name: channelParticipationButton }));
+    fireEvent.click(screen.getAllByRole('button', { name: /discord/i })[0]);
 
-    expect(screen.getByRole('heading', { name: 'Channel 健康' })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: /频道参与|Channel participation/i }).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/stale_gateway_log/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/review/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/摘要/i).length).toBeGreaterThan(0);
@@ -719,7 +728,7 @@ describe('dashboard expansion routes', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Execution 执行运行态/i }));
+    fireEvent.click(screen.getByRole('button', { name: runtimeSessionsButton }));
     fireEvent.click(screen.getByRole('button', { name: /加载输出/i }));
 
     expect(agentStoreState.fetchRuntimeTail).toHaveBeenCalledWith('codex');

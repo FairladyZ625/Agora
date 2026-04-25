@@ -85,21 +85,25 @@ export function LegacyTasksRedirectPage() {
 
   if (loading) {
     return (
-      <section className="surface-panel surface-panel--workspace">
-        <p className="type-body-sm">Redirecting task deep link into the project workspace…</p>
-      </section>
+      <div className="interior-page">
+        <section className="surface-panel surface-panel--workspace surface-panel--context-anchor">
+          <p className="type-body-sm">Redirecting task deep link into the project workspace…</p>
+        </section>
+      </div>
     );
   }
 
   return (
-    <section className="surface-panel surface-panel--workspace">
-      <div className="space-y-3">
+    <div className="interior-page">
+      <section className="surface-panel surface-panel--workspace surface-panel--context-anchor">
+        <div className="space-y-3">
         <p className="page-kicker">TASK ROUTE BRIDGE</p>
         <h2 className="page-title">Task link needs a project context</h2>
         <p className="page-summary">
           This task does not expose a project binding yet, so the legacy task route cannot be rewritten into the new workspace shell.
         </p>
-      </div>
-    </section>
+        </div>
+      </section>
+    </div>
   );
 }

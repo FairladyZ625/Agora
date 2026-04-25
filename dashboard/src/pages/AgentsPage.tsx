@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { CSSProperties } from 'react';
+import { Bot, Cable, Cpu, Search, ShieldCheck, UsersRound, Waypoints, Workflow } from 'lucide-react';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
 import { formatSelectabilityReason, resolveAgentSelectability } from '@/lib/agentSelectability';
 import { useAgentsPageCopy } from '@/lib/dashboardCopy';
 import { filterAgentsByView } from '@/lib/agentProviderInsights';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useAgentStore } from '@/stores/agentStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 
@@ -12,6 +13,7 @@ const MIN_CHANNEL_DETAIL_STALE_AFTER_MS = 15_000;
 type DrawerAxis = 'agents' | 'channels' | 'execution' | null;
 type ChannelDetailTab = 'summary' | 'signals' | 'history';
 type AgentSelectabilityFilter = 'all' | 'selectable' | 'restricted';
+type ParticipantFilter = 'all' | 'accounts' | 'agents' | 'runtimes' | 'bridges';
 type IssueGroup = {
   id: string;
   label: string;
@@ -93,9 +95,53 @@ function getSelectabilityTone(selectability: 'selectable' | 'restricted') {
   return selectability === 'selectable' ? 'info' as const : 'danger' as const;
 }
 
+function getStatusTone(status: string | null | undefined) {
+  const normalized = (status ?? '').toLowerCase();
+  if (['healthy', 'online', 'running', 'active', 'ready', 'selectable'].includes(normalized)) {
+    return 'success' as const;
+  }
+  if (['stale', 'recovering', 'busy', 'idle', 'unknown'].includes(normalized)) {
+    return 'warning' as const;
+  }
+  if (['failed', 'degraded', 'disconnected', 'offline', 'restricted'].includes(normalized)) {
+    return 'danger' as const;
+  }
+  return 'neutral' as const;
+}
+
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) {
+    return '0%';
+  }
+  return `${Math.round(value)}%`;
+}
+
+function getRuntimeSlotIdentity(
+  slot: {
+    agent: string;
+    provider: string;
+    sessionId: string | null;
+    sessionReference: string | null;
+    executionId: string | null;
+    taskId?: string | null;
+    subtaskId?: string | null;
+    currentCommand?: string | null;
+    status?: string | null;
+  },
+) {
+  const stableDetail = slot.sessionReference
+    ?? slot.sessionId
+    ?? slot.executionId
+    ?? slot.taskId
+    ?? slot.subtaskId
+    ?? slot.currentCommand
+    ?? slot.status
+    ?? 'unbound';
+  return `${slot.agent}:${slot.provider}:${stableDetail}`;
+}
+
 export function AgentsPage() {
   const copy = useAgentsPageCopy();
-  const isMobile = useMediaQuery('(max-width: 767px)');
   const summary = useAgentStore((state) => state.summary);
   const agents = useAgentStore((state) => state.agents);
   const craftsmen = useAgentStore((state) => state.craftsmen);
@@ -127,6 +173,9 @@ export function AgentsPage() {
   const [channelTab, setChannelTab] = useState<ChannelDetailTab>('summary');
   const [selectabilityFilter, setSelectabilityFilter] = useState<AgentSelectabilityFilter>('all');
   const [manualSelectedChannelId, setManualSelectedChannelId] = useState<string | null>(null);
+  const [participantFilter, setParticipantFilter] = useState<ParticipantFilter>('all');
+  const [participantQuery, setParticipantQuery] = useState('');
+  const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null);
   const selectedChannelId = channelFilter ?? manualSelectedChannelId ?? channelSummaries[0]?.channel ?? null;
 
   const channelDetailStaleAfterMs = Math.max(refreshInterval * 3_000, MIN_CHANNEL_DETAIL_STALE_AFTER_MS);
@@ -214,7 +263,7 @@ export function AgentsPage() {
     const sessionLabel = providerSummary.length === 1
       ? providerSummary[0]?.session ?? providerSummary[0]?.provider ?? 'n/a'
       : providerSummary.length > 1
-        ? `${providerSummary.length} providers`
+        ? String(providerSummary.length)
         : 'n/a';
     return {
       session: sessionLabel,
@@ -361,7 +410,7 @@ export function AgentsPage() {
   const axisCards = [
     {
       key: 'agents' as const,
-      title: 'Agent',
+      title: copy.workspace.axis.agentTitle,
       action: copy.workspace.axis.agentAction,
       summary: copy.workspace.axis.agentSummary,
       count: agents.length,
@@ -370,7 +419,7 @@ export function AgentsPage() {
     },
     {
       key: 'channels' as const,
-      title: 'Channel',
+      title: copy.workspace.axis.channelTitle,
       action: copy.workspace.axis.channelAction,
       summary: copy.workspace.axis.channelSummary,
       count: channelSummaries.length,
@@ -382,7 +431,7 @@ export function AgentsPage() {
     },
     {
       key: 'execution' as const,
-      title: 'Execution',
+      title: copy.workspace.axis.executionTitle,
       action: copy.workspace.axis.executionAction,
       summary: copy.workspace.axis.executionSummary,
       count: runtimeSummary.totalPanes + craftsmen.length,
@@ -391,160 +440,510 @@ export function AgentsPage() {
     },
   ];
 
+  const accountLinks = useMemo(() => {
+    const values = new Map<string, { id: string; label: string; status: string; meta: string }>();
+    agents.forEach((agent) => {
+      if (!agent.accountId) {
+        return;
+      }
+      values.set(agent.accountId, {
+        id: `human:${agent.accountId}`,
+        label: agent.accountId,
+        status: agent.presence,
+        meta: agent.role ?? agent.hostFramework ?? copy.mgo.unknown,
+      });
+    });
+    channelSummaries.forEach((channel) => {
+      channel.affectedAgents.forEach((agent) => {
+        if (!agent.accountId || values.has(agent.accountId)) {
+          return;
+        }
+        values.set(agent.accountId, {
+          id: `human:${agent.accountId}`,
+          label: agent.accountId,
+          status: agent.presence,
+          meta: channel.channel,
+        });
+      });
+    });
+    return [...values.values()];
+  }, [agents, channelSummaries, copy.mgo.unknown]);
+
+  const participantSections = useMemo(() => {
+    const normalize = (value: string) => value.toLowerCase();
+    const query = participantQuery.trim().toLowerCase();
+    const matches = (values: Array<string | null | undefined>) => (
+      query.length === 0 || values.some((value) => normalize(value ?? '').includes(query))
+    );
+    return {
+      accounts: accountLinks.filter((item) => matches([item.label, item.meta, item.status])),
+      agents: agents.filter((agent) => matches([
+        agent.id,
+        agent.role,
+        agent.presence,
+        agent.status,
+        agent.hostFramework,
+        agent.primaryModel,
+        ...agent.channelProviders,
+      ])),
+      runtimes: runtimeSlots.filter((slot) => matches([
+        slot.agent,
+        slot.provider,
+        slot.status,
+        slot.runtimeMode,
+        slot.transport,
+        slot.currentCommand,
+      ])),
+      bridges: channelSummaries.filter((channel) => matches([
+        channel.channel,
+        channel.overallPresence,
+        channel.signalStatus,
+        channel.presenceReason,
+      ])),
+    };
+  }, [accountLinks, agents, channelSummaries, participantQuery, runtimeSlots]);
+
+  const defaultParticipantId = useMemo(() => (
+    agents[0] ? `agent:${agents[0].id}` :
+      accountLinks[0]?.id ??
+      (runtimeSlots[0] ? `runtime:${getRuntimeSlotIdentity(runtimeSlots[0])}` : null) ??
+      (channelSummaries[0] ? `bridge:${channelSummaries[0].channel}` : null)
+  ), [accountLinks, agents, channelSummaries, runtimeSlots]);
+  const participantIds = useMemo(() => new Set([
+    ...accountLinks.map((account) => account.id),
+    ...agents.map((agent) => `agent:${agent.id}`),
+    ...runtimeSlots.map((slot) => `runtime:${getRuntimeSlotIdentity(slot)}`),
+    ...channelSummaries.map((channel) => `bridge:${channel.channel}`),
+  ]), [accountLinks, agents, channelSummaries, runtimeSlots]);
+  const effectiveSelectedParticipantId =
+    selectedParticipantId && participantIds.has(selectedParticipantId)
+      ? selectedParticipantId
+      : defaultParticipantId;
+
+  const selectedAgent = effectiveSelectedParticipantId?.startsWith('agent:')
+    ? agents.find((agent) => `agent:${agent.id}` === effectiveSelectedParticipantId) ?? null
+    : null;
+  const selectedHuman = effectiveSelectedParticipantId?.startsWith('human:')
+    ? accountLinks.find((account) => account.id === effectiveSelectedParticipantId) ?? null
+    : null;
+  const selectedRuntime = effectiveSelectedParticipantId?.startsWith('runtime:')
+    ? runtimeSlots.find((slot) => `runtime:${getRuntimeSlotIdentity(slot)}` === effectiveSelectedParticipantId) ?? null
+    : null;
+  const selectedBridge = effectiveSelectedParticipantId?.startsWith('bridge:')
+    ? channelSummaries.find((channel) => `bridge:${channel.channel}` === effectiveSelectedParticipantId) ?? null
+    : null;
+  const selectedParticipantName =
+    selectedAgent?.id ??
+    selectedHuman?.label ??
+    selectedRuntime?.agent ??
+    selectedBridge?.channel ??
+    copy.mgo.noSelection;
+  const selectedChannelFocus = selectedAgent?.channelProviders.join(', ')
+    || selectedBridge?.channel
+    || selectedHuman?.meta
+    || copy.mgo.unknown;
+  const selectedParticipantFocus = selectedRuntime?.agent
+    ?? selectedAgent?.id
+    ?? selectedBridge?.affectedAgents[0]?.id
+    ?? selectedHuman?.label
+    ?? copy.mgo.unknown;
+  const selectedRuntimeFocus = selectedRuntime?.sessionReference
+    ?? selectedRuntime?.sessionId
+    ?? selectedAgent?.runtimeTargetRef
+    ?? selectedAgent?.activeTaskIds[0]
+    ?? selectedBridge?.affectedAgents[0]?.id
+    ?? copy.mgo.unknown;
+
+  const runtimeAvailability = runtimeSummary.totalPanes > 0
+    ? (runtimeSummary.readyPanes / runtimeSummary.totalPanes) * 100
+    : 0;
+  const sloCompliance = agents.length > 0
+    ? ((agents.length - criticalAgents.length - staleAgents.length) / agents.length) * 100
+    : 100;
+  const systemPostureTone = openIssueCount > 0 ? 'warning' : 'success';
+  const systemPostureLabel = openIssueCount > 0 ? copy.mgo.needsAttention : copy.mgo.healthy;
+
+  const recentActivity = [
+    ...channelSummaries.flatMap((channel) => channel.signals.map((signal) => ({
+      id: `signal:${channel.channel}:${signal.occurredAt}:${signal.kind}`,
+      label: signal.kind,
+      detail: signal.detail ?? channel.channel,
+      time: signal.occurredAt,
+      tone: signal.severity === 'error' ? 'danger' as const : signal.severity === 'warning' ? 'warning' as const : 'info' as const,
+    }))),
+    ...channelSummaries.flatMap((channel) => channel.history.map((event) => ({
+      id: `history:${channel.channel}:${event.occurredAt}:${event.agentId}`,
+      label: event.agentId,
+      detail: event.reason ?? event.presence,
+      time: event.occurredAt,
+      tone: getPresenceTone(event.presence),
+    }))),
+    ...craftsmen.flatMap((craftsman) => craftsman.recentExecutions.map((execution) => ({
+      id: `execution:${craftsman.id}:${execution.executionId}`,
+      label: execution.status,
+      detail: `${craftsman.id} / ${execution.transport ?? copy.mgo.unknown}`,
+      time: execution.startedAt ?? craftsman.runningSince ?? '',
+      tone: execution.status === 'failed' ? 'danger' as const : execution.status === 'running' ? 'success' as const : 'neutral' as const,
+    }))),
+  ].sort((left, right) => Date.parse(right.time || '0') - Date.parse(left.time || '0')).slice(0, 5);
+
   return (
-    <div className="space-y-6">
-      <section className="surface-panel surface-panel--workspace">
-        <div className="workbench-masthead">
-          <div>
-            <p className="page-kicker">{copy.kicker}</p>
-            <h2 className="page-title">{copy.title}</h2>
-            <p className="page-summary">{copy.summary}</p>
+    <div className="participants-mgo interior-page">
+      <section className="participants-mgo__masthead" data-testid="agents-global-status">
+        <div className="participants-mgo__title">
+          <p className="page-kicker">{copy.kicker}</p>
+          <h2 className="page-title">{copy.title}</h2>
+          <p className="page-summary">{copy.summary}</p>
+        </div>
+        <div className="participants-mgo__metrics">
+          <div className="participants-mgo__metric">
+            <UsersRound size={20} />
+            <span>{copy.mgo.metrics.accounts}</span>
+            <strong>{accountLinks.length}</strong>
+            <small>{copy.mgo.accountLinks}</small>
           </div>
-          <div className="workbench-masthead__signals">
-            <div className="inline-stat">
-              <span className="inline-stat__label">{copy.metrics.activeTasks}</span>
-              <span className="inline-stat__value">{summary?.activeTasks ?? 0}</span>
-            </div>
-            <div className="inline-stat">
-              <span className="inline-stat__label">{copy.metrics.activeAgents}</span>
-              <span className="inline-stat__value">{summary?.activeAgents ?? 0}</span>
-            </div>
-            <div className="inline-stat">
-              <span className="inline-stat__label">{copy.runtimeSessionLabel}</span>
-              <span className="inline-stat__value">{runtimeSummary.session}</span>
+          <div className="participants-mgo__metric">
+            <Bot size={20} />
+            <span>{copy.mgo.metrics.agents}</span>
+            <strong>{agents.length}</strong>
+            <small>{copy.metrics.activeAgents} {summary?.activeAgents ?? 0}</small>
+          </div>
+          <div className="participants-mgo__metric">
+            <Cpu size={20} />
+            <span>{copy.mgo.metrics.runtimeSessions}</span>
+            <strong>{runtimeSummary.totalPanes}</strong>
+            <small>{copy.runtimeReadyPanesLabel} {runtimeSummary.readyPanes}</small>
+          </div>
+          <div className="participants-mgo__metric">
+            <Cable size={20} />
+            <span>{copy.mgo.metrics.bridges}</span>
+            <strong>{channelSummaries.length}</strong>
+            <small>{copy.mgo.healthy} {channelSummaries.filter((item) => item.signalStatus === 'healthy').length}</small>
+          </div>
+          <div className={`participants-mgo__posture participants-mgo__posture--${systemPostureTone}`}>
+            <ShieldCheck size={26} />
+            <div>
+              <span>{copy.mgo.metrics.systemPosture}</span>
+              <strong>{systemPostureLabel}</strong>
+              <small>{openIssueCount > 0 ? copy.workspace.issueCountOpen(openIssueCount) : copy.workspace.issueCountStable}</small>
             </div>
           </div>
         </div>
-        {error ? <div className="inline-alert inline-alert--danger mt-5">{error}</div> : null}
+        {error ? <div className="inline-alert inline-alert--danger">{error}</div> : null}
       </section>
 
-      <section className={isMobile ? 'space-y-6' : 'agents-global-grid'} data-testid="agents-global-status">
-        <div className="surface-panel surface-panel--workspace space-y-5">
-          <div className="section-title-row">
-            <div>
-              <p className="page-kicker">{copy.workspace.overviewKicker}</p>
-              <h3 className="section-title">{copy.workspace.overviewTitle}</h3>
-            </div>
-            <span className={getPillClass(openIssueCount > 0 ? 'warning' : 'success')}>
-              {openIssueCount > 0 ? copy.workspace.issueCountOpen(openIssueCount) : copy.workspace.issueCountStable}
-            </span>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {globalSignals.map((signal) => (
-              <div key={signal.label} className="data-row">
-                <div className="min-w-0 flex-1">
-                  <p className="type-text-xs">{signal.label}</p>
-                  <p className="type-heading-sm mt-3">{signal.value}</p>
-                  <div className="mt-3 flex items-center gap-2">
-                    <span className={getPillClass(signal.tone)}>{signal.value > 0 ? copy.workspace.attentionLabel : copy.workspace.stableLabel}</span>
-                    <span className="type-text-xs">{signal.note}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {!isMobile ? (
-          <div className="surface-panel surface-panel--workspace space-y-4">
-            <div className="section-title-row">
-              <div>
-                <p className="page-kicker">{copy.workspace.focusKicker}</p>
-                <h3 className="section-title">{copy.workspace.focusTitle}</h3>
-              </div>
-              <span className="status-pill status-pill--neutral">{runtimeSummary.session}</span>
-            </div>
-            <div className="space-y-3">
-                <div className="data-row">
-                  <div className="min-w-0 flex-1">
-                    <p className="type-text-xs">{copy.workspace.channelFocusLabel}</p>
-                    <p className="type-body-sm mt-2">{degradedChannels.length > 0 ? copy.workspace.channelFocusMessage(degradedChannels[0].channel) : copy.workspace.channelFocusEmpty}</p>
-                  </div>
-                </div>
-                <div className="data-row">
-                  <div className="min-w-0 flex-1">
-                    <p className="type-text-xs">{copy.workspace.agentFocusLabel}</p>
-                    <p className="type-body-sm mt-2">
-                      {criticalAgents.length > 0
-                        ? copy.workspace.agentCriticalMessage(criticalAgents[0].id)
-                        : staleAgents.length > 0
-                          ? copy.workspace.agentStaleMessage(staleAgents[0].id)
-                          : copy.workspace.agentFocusEmpty}
-                    </p>
-                  </div>
-                </div>
-                <div className="data-row">
-                  <div className="min-w-0 flex-1">
-                    <p className="type-text-xs">{copy.workspace.executionFocusLabel}</p>
-                    <p className="type-body-sm mt-2">
-                      {runtimeSummary.failedCraftsmen > 0
-                        ? copy.workspace.executionFailedMessage(runtimeSummary.failedCraftsmen)
-                        : copy.workspace.executionReadyMessage(runtimeSummary.readyPanes, runtimeSummary.totalPanes)}
-                    </p>
-                  </div>
-                </div>
-            </div>
-          </div>
-        ) : null}
-      </section>
-
-      <section className="agents-workbench-grid">
-        <div className="surface-panel surface-panel--workspace" data-testid="agents-issue-queue">
-          <div className="section-title-row">
-            <div>
-              <p className="page-kicker">{copy.workspace.issueQueueKicker}</p>
-              <h3 className="section-title">{copy.workspace.issueQueueTitle}</h3>
-            </div>
-            <span className="status-pill status-pill--neutral">{openIssueCount}</span>
-          </div>
-          <div className="workbench-scroll workbench-scroll--list agents-issue-queue__scroll" data-testid="agents-issue-queue-scroll">
-            {issueGroups.length === 0 ? (
-              <div className="empty-state">
-                <p className="type-body-sm">{copy.workspace.issueQueueEmpty}</p>
-              </div>
-            ) : (
-              <div className="dense-list mt-5">
-                {issueGroups.map((issue) => (
-                  <button key={issue.id} type="button" className="dense-row" onClick={issue.action}>
-                    <div className="dense-row__main">
-                      <div className="dense-row__titleblock">
-                        <strong className="dense-row__title">{issue.label}</strong>
-                        <span className={getPillClass(issue.severity)}>{issue.count}</span>
-                      </div>
-                      <div className="dense-row__meta">
-                        <span>{issue.summary}</span>
-                        <span>{issue.detail}</span>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="surface-panel surface-panel--workspace" data-testid="agents-axis-entry">
-          <div className="section-title-row">
-            <div>
-              <p className="page-kicker">{copy.workspace.detailEntryKicker}</p>
-              <h3 className="section-title">{copy.workspace.detailEntryTitle}</h3>
-            </div>
-            <span className="status-pill status-pill--neutral">3</span>
-          </div>
-          <div className="mt-5 grid gap-4 lg:grid-cols-3">
-            {axisCards.map((axis) => (
-              <button key={axis.key} type="button" className="decision-card text-left" onClick={axis.onClick}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="type-text-xs">{axis.title}</p>
-                    <p className="type-heading-sm mt-2">{axis.action}</p>
-                  </div>
-                  <span className={getPillClass(axis.tone)}>{axis.count}</span>
-                </div>
-                <p className="type-body-sm mt-4">{axis.summary}</p>
+      <section className="participants-mgo__workspace">
+        <aside className="participants-mgo__inventory">
+          <div className="participants-mgo__tabs">
+            {(['all', 'accounts', 'agents', 'runtimes', 'bridges'] as const).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                className={participantFilter === filter ? 'participants-mgo__tab participants-mgo__tab--active' : 'participants-mgo__tab'}
+                onClick={() => setParticipantFilter(filter)}
+              >
+                {copy.mgo.filters[filter]}
               </button>
             ))}
           </div>
+          <label className="participants-mgo__search">
+            <Search size={16} />
+            <input
+              type="search"
+              aria-label={copy.mgo.searchLabel}
+              placeholder={copy.mgo.searchPlaceholder}
+              value={participantQuery}
+              onChange={(event) => setParticipantQuery(event.target.value)}
+            />
+          </label>
+          <div className="participants-mgo__inventory-scroll">
+            {(participantFilter === 'all' || participantFilter === 'accounts') ? (
+              <div className="participants-mgo__group">
+                <div className="participants-mgo__group-title">
+                  <span>{copy.mgo.groups.accounts}</span>
+                  <strong>{participantSections.accounts.length}</strong>
+                </div>
+                {participantSections.accounts.length === 0 ? <p className="type-body-sm">{copy.mgo.empty.accounts}</p> : null}
+                {participantSections.accounts.map((human) => (
+                  <button key={human.id} type="button" className={effectiveSelectedParticipantId === human.id ? 'participants-mgo__row participants-mgo__row--active' : 'participants-mgo__row'} onClick={() => setSelectedParticipantId(human.id)}>
+                    <span className="participants-mgo__avatar">{human.label.slice(0, 2).toUpperCase()}</span>
+                    <span>
+                      <strong>{human.label}</strong>
+                      <small>{human.meta}</small>
+                    </span>
+                    <em className={`participants-mgo__state participants-mgo__state--${getStatusTone(human.status)}`}>{human.status}</em>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {(participantFilter === 'all' || participantFilter === 'agents') ? (
+              <div className="participants-mgo__group">
+                <div className="participants-mgo__group-title">
+                  <span>{copy.mgo.groups.agents}</span>
+                  <strong>{participantSections.agents.length}</strong>
+                </div>
+                {participantSections.agents.length === 0 ? <p className="type-body-sm">{copy.emptyAgents}</p> : null}
+                {participantSections.agents.map((agent) => (
+                  <button key={agent.id} type="button" className={effectiveSelectedParticipantId === `agent:${agent.id}` ? 'participants-mgo__row participants-mgo__row--active' : 'participants-mgo__row'} onClick={() => setSelectedParticipantId(`agent:${agent.id}`)}>
+                    <span className="participants-mgo__avatar participants-mgo__avatar--agent"><Bot size={15} /></span>
+                    <span>
+                      <strong>{agent.id}</strong>
+                      <small>{agent.role ?? agent.primaryModel ?? copy.mgo.unknown}</small>
+                    </span>
+                    <em className={`participants-mgo__state participants-mgo__state--${getStatusTone(agent.presence)}`}>{agent.presence}</em>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {(participantFilter === 'all' || participantFilter === 'runtimes') ? (
+              <div className="participants-mgo__group">
+                <div className="participants-mgo__group-title">
+                  <span>{copy.mgo.groups.runtimes}</span>
+                  <strong>{participantSections.runtimes.length}</strong>
+                </div>
+                {participantSections.runtimes.length === 0 ? <p className="type-body-sm">{copy.emptyRuntime}</p> : null}
+                {participantSections.runtimes.map((slot) => {
+                  const slotId = `runtime:${getRuntimeSlotIdentity(slot)}`;
+                  return (
+                  <button key={slotId} type="button" className={effectiveSelectedParticipantId === slotId ? 'participants-mgo__row participants-mgo__row--active' : 'participants-mgo__row'} onClick={() => setSelectedParticipantId(slotId)}>
+                    <span className="participants-mgo__avatar participants-mgo__avatar--runtime"><Cpu size={15} /></span>
+                    <span>
+                      <strong>{slot.agent}</strong>
+                      <small>{slot.provider} / {slot.runtimeMode ?? copy.mgo.unknown}</small>
+                    </span>
+                    <em className={`participants-mgo__state participants-mgo__state--${getStatusTone(slot.status)}`}>{slot.status}</em>
+                  </button>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {(participantFilter === 'all' || participantFilter === 'bridges') ? (
+              <div className="participants-mgo__group">
+                <div className="participants-mgo__group-title">
+                  <span>{copy.mgo.groups.bridges}</span>
+                  <strong>{participantSections.bridges.length}</strong>
+                </div>
+                {participantSections.bridges.length === 0 ? <p className="type-body-sm">{copy.emptyChannelDetail}</p> : null}
+                {participantSections.bridges.map((channel) => (
+                  <button key={channel.channel} type="button" className={effectiveSelectedParticipantId === `bridge:${channel.channel}` ? 'participants-mgo__row participants-mgo__row--active' : 'participants-mgo__row'} onClick={() => setSelectedParticipantId(`bridge:${channel.channel}`)}>
+                    <span className="participants-mgo__avatar participants-mgo__avatar--bridge"><Cable size={15} /></span>
+                    <span>
+                      <strong>{channel.channel}</strong>
+                      <small>{channel.totalAgents} {copy.mgo.groups.agents}</small>
+                    </span>
+                    <em className={`participants-mgo__state participants-mgo__state--${getStatusTone(channel.signalStatus)}`}>{channel.signalStatus}</em>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </aside>
+
+        <main className="participants-mgo__map" data-testid="agents-participation-map">
+          <div className="participants-mgo__map-toolbar">
+            <div>
+              <p className="page-kicker">{copy.mgo.mapKicker}</p>
+              <h3 className="section-title">{copy.mgo.mapTitle}</h3>
+            </div>
+            <div className="participants-mgo__toolbar-actions">
+              {axisCards.map((axis) => (
+                <button key={axis.key} type="button" className="participants-mgo__icon-button" onClick={axis.onClick} aria-label={axis.action}>
+                  {axis.key === 'agents' ? <UsersRound size={16} /> : axis.key === 'channels' ? <Waypoints size={16} /> : <Workflow size={16} />}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="participants-mgo__graph">
+            <svg className="participants-mgo__links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <line x1="50" y1="50" x2="36" y2="15" />
+              <line x1="50" y1="50" x2="50" y2="12" />
+              <line x1="50" y1="50" x2="64" y2="16" />
+              <line x1="50" y1="50" x2="18" y2="40" />
+              <line x1="50" y1="50" x2="18" y2="58" />
+              <line x1="50" y1="50" x2="82" y2="42" />
+              <line x1="50" y1="50" x2="36" y2="82" />
+              <line x1="50" y1="50" x2="52" y2="82" />
+              <line x1="50" y1="50" x2="68" y2="80" />
+              <text x="35" y="39">{copy.mgo.relationshipLabels.participates}</text>
+              <text x="59" y="39">{copy.mgo.relationshipLabels.routes}</text>
+              <text x="43" y="70">{copy.mgo.relationshipLabels.runsOn}</text>
+              <text x="19" y="52">{copy.mgo.relationshipLabels.executes}</text>
+            </svg>
+            <div className="participants-mgo__orbit participants-mgo__orbit--outer" />
+            <div className="participants-mgo__orbit participants-mgo__orbit--inner" />
+            <div className="participants-mgo__hub">
+              <span><Workflow size={20} /></span>
+              <strong>{selectedParticipantName}</strong>
+              <small>{copy.mgo.activeTopology}</small>
+            </div>
+            {accountLinks.slice(0, 3).map((account, index) => (
+              <button key={account.id} type="button" className={`participants-mgo__node participants-mgo__node--human participants-mgo__node--h${index + 1}`} onClick={() => setSelectedParticipantId(account.id)}>
+                <span>{account.label.slice(0, 2).toUpperCase()}</span>
+                <strong>{account.label}</strong>
+                <small>{account.status}</small>
+              </button>
+            ))}
+            {agents.slice(0, 3).map((agent, index) => (
+              <button key={agent.id} type="button" className={`participants-mgo__node participants-mgo__node--agent participants-mgo__node--a${index + 1}`} onClick={() => setSelectedParticipantId(`agent:${agent.id}`)}>
+                <Bot size={18} />
+                <strong>{agent.id}</strong>
+                <small>{agent.presence}</small>
+              </button>
+            ))}
+            {runtimeSlots.slice(0, 3).map((slot, index) => {
+              const slotId = `runtime:${getRuntimeSlotIdentity(slot)}`;
+              return (
+              <button key={slotId} type="button" className={`participants-mgo__node participants-mgo__node--runtime participants-mgo__node--r${index + 1}`} onClick={() => setSelectedParticipantId(slotId)}>
+                <Cpu size={18} />
+                <strong>{slot.agent}</strong>
+                <small>{slot.status}</small>
+              </button>
+              );
+            })}
+            {channelSummaries.slice(0, 3).map((channel, index) => (
+              <button key={channel.channel} type="button" className={`participants-mgo__node participants-mgo__node--bridge participants-mgo__node--b${index + 1}`} onClick={() => setSelectedParticipantId(`bridge:${channel.channel}`)}>
+                <Cable size={18} />
+                <strong>{channel.channel}</strong>
+                <small>{channel.signalStatus}</small>
+              </button>
+            ))}
+          </div>
+        </main>
+
+        <aside className="participants-mgo__truth">
+          <section className="participants-mgo__truth-panel">
+            <div className="section-title-row">
+              <div>
+                <p className="page-kicker">{copy.mgo.runtimeTruthKicker}</p>
+                <h3 className="section-title">{copy.mgo.runtimeTruthTitle}</h3>
+              </div>
+              <span className={getPillClass(systemPostureTone)}>{copy.mgo.live}</span>
+            </div>
+            <div className="participants-mgo__sparkline" aria-hidden="true">
+              {globalSignals.map((signal) => <span key={signal.label} style={{ '--height': `${Math.max(14, 24 + signal.value * 4)}px` } as CSSProperties} />)}
+            </div>
+            <div className="participants-mgo__truth-metrics">
+              <span><strong>{formatPercent(runtimeAvailability)}</strong>{copy.mgo.availability}</span>
+              <span><strong>{runtimeSummary.runningCraftsmen}</strong>{copy.runtimeRunningCraftsmenLabel}</span>
+              <span><strong>{openIssueCount}</strong>{copy.mgo.violations}</span>
+              <span><strong>{formatPercent(sloCompliance)}</strong>{copy.mgo.sloCompliance}</span>
+            </div>
+          </section>
+
+          <section className="participants-mgo__truth-panel">
+            <div className="section-title-row">
+              <h3 className="section-title">{copy.mgo.activeRuntimeSessions}</h3>
+              <button type="button" className="status-pill status-pill--neutral" onClick={() => setActiveDrawer('execution')}>{copy.mgo.viewAll}</button>
+            </div>
+            <div className="participants-mgo__session-list">
+              {runtimeSlots.slice(0, 4).map((slot) => {
+                const slotId = `runtime:${getRuntimeSlotIdentity(slot)}`;
+                return (
+                <button key={slotId} type="button" className="participants-mgo__session" onClick={() => setSelectedParticipantId(slotId)}>
+                  <Cpu size={16} />
+                  <span><strong>{slot.agent}</strong><small>{slot.provider} / {slot.transport ?? copy.mgo.unknown}</small></span>
+                  <em className={`participants-mgo__state participants-mgo__state--${getStatusTone(slot.status)}`}>{slot.status}</em>
+                </button>
+                );
+              })}
+              {runtimeSlots.length === 0 ? <p className="type-body-sm">{copy.emptyRuntime}</p> : null}
+            </div>
+          </section>
+
+          <section className="participants-mgo__truth-panel" data-testid="agents-axis-entry">
+            <div className="section-title-row">
+              <h3 className="section-title">{copy.mgo.systemCapability}</h3>
+              <button type="button" className="status-pill status-pill--neutral" onClick={() => setActiveDrawer('agents')}>{copy.mgo.viewAll}</button>
+            </div>
+            <div className="participants-mgo__capability">
+              <span>{copy.runtimePanesLabel}<strong>{runtimeSummary.totalPanes}</strong></span>
+              <span>{copy.mgo.metrics.bridges}<strong>{channelSummaries.length}</strong></span>
+              <span>{copy.mgo.policies}<strong>{globalSignals.length}</strong></span>
+              <span>{copy.mgo.dispatchPrecedence}<strong>{selectabilitySummary.selectable}</strong></span>
+              <span>{copy.mgo.overallSystemHealth}<strong>{systemPostureLabel}</strong></span>
+            </div>
+          </section>
+        </aside>
+      </section>
+
+      <section className="participants-mgo__bottom">
+        <div className="participants-mgo__selected">
+          <div className="section-title-row">
+            <div>
+              <p className="page-kicker">{copy.mgo.selectedParticipant}</p>
+              <h3 className="section-title">
+                {selectedParticipantName}
+              </h3>
+            </div>
+            <span className={getPillClass(getStatusTone(selectedAgent?.presence ?? selectedHuman?.status ?? selectedRuntime?.status ?? selectedBridge?.signalStatus))}>
+              {selectedAgent?.presence ?? selectedHuman?.status ?? selectedRuntime?.status ?? selectedBridge?.signalStatus ?? copy.mgo.unknown}
+            </span>
+          </div>
+          <div className="participants-mgo__detail-grid">
+            <span>{copy.roleLabel}<strong>{selectedAgent?.role ?? selectedHuman?.meta ?? selectedRuntime?.provider ?? selectedBridge?.overallPresence ?? copy.mgo.unknown}</strong></span>
+            <span>{copy.hostLabel}<strong>{selectedAgent?.hostFramework ?? selectedRuntime?.transport ?? selectedBridge?.channel ?? copy.mgo.unknown}</strong></span>
+            <span>{copy.modelLabel}<strong>{selectedAgent?.primaryModel ?? selectedRuntime?.runtimeMode ?? selectedBridge?.presenceReason ?? copy.mgo.unknown}</strong></span>
+            <span>{copy.lastSeenLabel}<strong>{selectedAgent?.lastSeenAt ?? selectedBridge?.lastSeenAt ?? copy.mgo.now}</strong></span>
+          </div>
+        </div>
+
+        <div className="participants-mgo__relationships">
+          <div className="section-title-row">
+            <h3 className="section-title">{copy.mgo.liveRelationships}</h3>
+            <button type="button" className="status-pill status-pill--neutral" onClick={() => setActiveDrawer('channels')}>{copy.mgo.relationshipGraph}</button>
+          </div>
+          <div className="participants-mgo__relationship-list">
+            <span><Waypoints size={16} />{copy.workspace.channelFocusLabel}<strong>{selectedChannelFocus}</strong></span>
+            <span><Bot size={16} />{copy.workspace.agentFocusLabel}<strong>{selectedParticipantFocus}</strong></span>
+            <span><Cpu size={16} />{copy.workspace.executionFocusLabel}<strong>{selectedRuntimeFocus}</strong></span>
+            <span><Cable size={16} />{copy.workspace.signalLabels.channelIssues}<strong>{degradedChannels.length}</strong></span>
+          </div>
+        </div>
+
+        <div className="participants-mgo__activity">
+          <div className="section-title-row">
+            <h3 className="section-title">{copy.mgo.recentActivity}</h3>
+            <button type="button" className="status-pill status-pill--neutral" onClick={() => setActiveDrawer('channels')}>{copy.mgo.viewAll}</button>
+          </div>
+          <div className="participants-mgo__activity-list">
+            {recentActivity.length === 0 ? <p className="type-body-sm">{copy.emptyChannelSignals}</p> : null}
+            {recentActivity.map((item) => (
+              <span key={item.id}>
+                <em className={`participants-mgo__dot participants-mgo__dot--${item.tone}`} />
+                <strong>{item.label}</strong>
+                <small>{item.detail}</small>
+                <time>{item.time || copy.mgo.now}</time>
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="participants-mgo__issues" data-testid="agents-issue-queue">
+        <div className="section-title-row">
+          <div>
+            {copy.workspace.issueQueueKicker ? <p className="page-kicker">{copy.workspace.issueQueueKicker}</p> : null}
+            <h3 className="section-title">{copy.workspace.issueQueueTitle}</h3>
+          </div>
+          <span className="status-pill status-pill--neutral">{openIssueCount}</span>
+        </div>
+        <div className="participants-mgo__issue-scroll" data-testid="agents-issue-queue-scroll">
+          {issueGroups.length === 0 ? (
+            <div className="empty-state">
+              <p className="type-body-sm">{copy.workspace.issueQueueEmpty}</p>
+            </div>
+          ) : issueGroups.map((issue) => (
+            <button key={issue.id} type="button" className="participants-mgo__issue" onClick={issue.action}>
+              <span>
+                <strong>{issue.label}</strong>
+                <small>{issue.summary}</small>
+              </span>
+              <em className={getPillClass(issue.severity)}>{issue.count}</em>
+            </button>
+          ))}
         </div>
       </section>
 
@@ -583,7 +982,7 @@ export function AgentsPage() {
                   className={channelFilter === null ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
                   onClick={() => setChannelFilter(null)}
                 >
-                  all
+                  {copy.filterLabels.all}
                 </button>
                 {channelSummaries.map((item) => (
                   <button
@@ -603,7 +1002,7 @@ export function AgentsPage() {
                   className={hostFilter === null ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
                   onClick={() => setHostFilter(null)}
                 >
-                  all
+                  {copy.filterLabels.all}
                 </button>
                 {hostSummaries.map((item) => (
                   <button
@@ -1008,7 +1407,7 @@ export function AgentsPage() {
               ) : (
                 <div className="space-y-3">
                   {runtimeSlots.map((pane) => (
-                    <div key={pane.agent} className="decision-card">
+                    <div key={getRuntimeSlotIdentity(pane)} className="decision-card">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="type-heading-sm">{pane.agent}</p>
@@ -1021,11 +1420,11 @@ export function AgentsPage() {
                       <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
                         <span>{copy.commandLabel}: {pane.currentCommand ?? 'n/a'}</span>
                         <span>{copy.statusLabel}: {pane.status}</span>
-                        <span>provider: {pane.provider}</span>
-                        <span>runtime: {pane.runtimeMode ?? 'n/a'}</span>
-                        <span>transport: {pane.transport ?? 'n/a'}</span>
+                        <span>{copy.mgo.providerLabel}: {pane.provider}</span>
+                        <span>{copy.mgo.runtimeLabel}: {pane.runtimeMode ?? 'n/a'}</span>
+                        <span>{copy.mgo.transportLabel}: {pane.transport ?? 'n/a'}</span>
                         <span>{copy.sessionReferenceLabel}: {pane.sessionReference ?? 'n/a'}</span>
-                        <span>execution: {pane.executionId ?? 'n/a'}</span>
+                        <span>{copy.mgo.executionLabel}: {pane.executionId ?? 'n/a'}</span>
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-3">
                         <p className="type-text-xs">{copy.tailPreviewLabel}: {runtimeTailByAgent[pane.agent] ?? pane.tailPreview ?? 'n/a'}</p>

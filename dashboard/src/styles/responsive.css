@@ -16,7 +16,31 @@
   }
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1280px) {
+  .login-shell__nav {
+    grid-template-columns: minmax(140px, auto) auto;
+    gap: 16px;
+  }
+
+  .login-shell__nav-name {
+    font-size: 14px;
+    letter-spacing: 0.18em;
+  }
+
+  .login-shell__title {
+    font-size: clamp(64px, 8.4vw, 92px);
+  }
+
+  .login-shell__signal-stage {
+    min-height: 460px;
+  }
+}
+
+@media (max-width: 1220px) {
+  .login-shell {
+    --login-page-gutter: 32px;
+  }
+
   .login-shell__hero-content,
   .workbench-shell__hero,
   .workbench-header__top,
@@ -26,16 +50,17 @@
   }
 
   .login-shell__hero-content {
-    align-items: end;
+    align-items: stretch;
+    gap: 28px;
+    padding: 108px 0 96px;
   }
 
-  .login-shell__form--floating {
-    max-width: 420px;
-    margin-left: 0;
+  .login-shell__signal-stage {
+    min-height: 440px;
   }
 
-  .login-shell__copy-frame {
-    max-width: min(100%, 560px);
+  .login-shell__access-rail {
+    width: min(100%, 460px);
   }
 
   .workbench-grid,
@@ -60,18 +85,48 @@
   }
 }
 
+@media (max-width: 980px) {
+  .login-shell__nav {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
 @media (max-width: 767px) {
+  .login-shell {
+    --login-page-gutter: 16px;
+  }
+
+  .login-shell__nav {
+    position: absolute;
+    top: 12px;
+    width: calc(100vw - 24px);
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    min-height: 62px;
+    padding: 10px 12px;
+  }
+
+  .login-shell__nav-status {
+    display: none;
+  }
+
+  .login-shell__nav-utility {
+    gap: 8px;
+  }
+
   .login-shell__hero-content {
     min-height: 100vh;
-    padding: 20px 16px;
+    padding: 88px 0 48px;
+    gap: 18px;
   }
 
   .login-shell__title {
-    font-size: clamp(2rem, 8vw, var(--font-size-hero-title-desktop, 2.857rem));
+    font-size: clamp(3.4rem, 18vw, 5.2rem);
+    letter-spacing: 0.05em;
   }
 
-  .login-shell__copy-frame,
-  .login-shell__hero-copy,
+  .login-shell__identity-panel,
+  .login-shell__signal-card,
   .login-shell__form,
   .dashboard-users-create__head,
   .dashboard-user-card__head,
@@ -79,14 +134,39 @@
     padding: 18px 16px;
   }
 
-  .login-shell__copy-frame {
+  .login-shell__access-rail {
     width: 100%;
     max-width: none;
   }
 
-  .login-shell__form--floating {
-    max-width: none;
+  .login-shell__signal-stage {
+    min-height: 620px;
+    padding: 24px 20px 92px;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'governance'
+      'context'
+      'runtime'
+      'references';
+    gap: 14px;
+  }
+
+  .login-shell__signal-card {
     width: 100%;
+  }
+
+  .login-shell__signal-card--context,
+  .login-shell__signal-card--runtime,
+  .login-shell__signal-card--references,
+  .login-shell__signal-card--governance {
+    justify-self: stretch;
+  }
+
+  .login-shell__signal-core-anchor {
+    left: 50%;
+    top: 54%;
+    width: 112px;
+    height: 112px;
   }
 
   .app-shell {
@@ -100,12 +180,12 @@
   }
 
   .app-topbar__frame--mobile {
-    grid-template-columns: 1fr;
-    gap: 12px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
   }
 
   .app-topbar__cluster--controls {
-    justify-content: stretch;
+    justify-content: flex-end;
   }
 
   .topbar-ops__stack,
@@ -116,9 +196,9 @@
   .topbar-actions-group--mobile {
     gap: 0;
     padding: 0 2px;
+    flex-wrap: nowrap;
   }
 
-  .topbar-chip,
   .topbar-user-chip {
     max-width: 100%;
   }
@@ -330,5 +410,126 @@
   .agents-issue-queue__scroll {
     max-height: none;
     padding-right: 0;
+  }
+}
+
+
+@media (max-width: 1180px) {
+  .home-mgo__hero {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.8fr);
+  }
+
+  .home-mgo__posture {
+    grid-column: 1 / -1;
+  }
+
+  .home-mgo__truth-metrics,
+  .home-mgo__project-grid,
+  .home-mgo__capability-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .home-mgo__focus-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .project-workspace-shell__head {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .project-workspace-shell__field {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .project-workspace-shell__tabs {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .project-workspace-tab:nth-child(3n) {
+    border-right: 1px solid var(--surface-workspace-border);
+  }
+}
+
+@media (max-width: 767px) {
+  .home-mgo__hero,
+  .home-mgo__grid,
+  .home-mgo__truth-metrics,
+  .home-mgo__project-grid,
+  .home-mgo__capability-grid,
+  .home-mgo__focus-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .home-mgo__posture-strip,
+  .home-mgo__focus-next,
+  .home-mgo__queue-footer,
+  .home-mgo__queue-actions,
+  .home-mgo__project-card-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .home-mgo__section-head {
+    flex-wrap: wrap;
+  }
+
+  .home-mgo__queue-actions {
+    width: 100%;
+  }
+
+  .home-mgo__queue-link,
+  .home-mgo__focus-link,
+  .home-mgo__capability-link {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .home-mgo__hero-title {
+    font-size: clamp(2rem, 16vw, 3.2rem);
+  }
+
+  .home-mgo__hero-signal {
+    min-height: 132px;
+  }
+
+  .home-mgo__queue-card,
+  .home-mgo__focus-card,
+  .home-mgo__rail-panel,
+  .home-mgo__capability-strip {
+    padding: 16px;
+  }
+
+  .project-workspace-shell__nav {
+    padding: 0;
+  }
+
+  .project-workspace-shell__field {
+    grid-template-columns: 1fr;
+  }
+
+  .project-workspace-shell__tabs {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .project-workspace-shell__signal {
+    border-right: 0;
+    border-bottom: 1px solid var(--surface-workspace-border);
+  }
+
+  .project-workspace-shell__signal:last-child {
+    border-bottom: 0;
+  }
+
+  .project-workspace-tab,
+  .project-workspace-tab:nth-child(3n) {
+    border-right: 1px solid var(--surface-workspace-border);
+    border-bottom: 0;
+  }
+
+  .project-workspace-tab:last-child {
+    border-right: 0;
   }
 }
