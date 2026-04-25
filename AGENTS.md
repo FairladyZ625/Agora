@@ -194,6 +194,7 @@
 - 私有聚合仓 / `Agora_Private` 同步：
 
   - 先读 [docs/11-REFERENCE/private-aggregate-repo-sync-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/private-aggregate-repo-sync-standard.md)
+  - 再读 [docs/11-REFERENCE/private-to-public-release-sync-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/private-to-public-release-sync-standard.md)
 - 其他工程质量门与通用工程规则：
 
   - 先读 [docs/11-REFERENCE/engineering-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/engineering-standard.md)
@@ -207,7 +208,7 @@
 - `extensions/agora-plugin/`
   - plugin / bridge
 - `docs/`
-  - 独立文档仓库
+  - 在 `Agora_Private` 中是内部文档目录，不是嵌套 Git 仓
 
 ## 7. Runtime Defaults
 
@@ -229,11 +230,13 @@
 
 ## 8. Docs / Git Notes
 
-- `docs/` 是独立 Git 仓库；docs 变更只在 docs 仓提交。
-- `Agora_Private`（`git@github.com:FairladyZ625/Agora_Private.git`）是私有聚合镜像仓：
-  - 根目录同步代码仓
-  - `docs/` 子目录同步 docs 仓
-  - 它不是新的 SSoT；源仓仍是 `Agora` 与 `agora_doc`
-  - 默认使用 [scripts/sync-agora-private.sh](/Users/lizeyu/Projects/Agora/scripts/sync-agora-private.sh) 同步，详细规则见 [docs/11-REFERENCE/private-aggregate-repo-sync-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/private-aggregate-repo-sync-standard.md)
+- `Agora_Private`（`git@github.com:FairladyZ625/Agora_Private.git`）是闭源开发主仓：
+  - 根目录承载代码
+  - `docs/` 承载内部 planning / architecture / walkthrough / reference
+  - `docs/` 在 private 主仓中是普通目录，不再作为嵌套 Git 仓管理
+  - 开源发布时只把允许公开的路径投影到 `FairladyZ625/Agora`
+  - `agora_doc` 是 private legacy/archive docs 仓，不再是日常开发 SSoT
+  - 详细规则见 [docs/11-REFERENCE/private-aggregate-repo-sync-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/private-aggregate-repo-sync-standard.md) 与 [docs/11-REFERENCE/private-to-public-release-sync-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/private-to-public-release-sync-standard.md)
+- 在公开代码仓 `FairladyZ625/Agora` 中，仍禁止提交 private `docs/`；只允许 `Doc/reference/` 等公开 contributor-facing 文档。
 - 文档与代码一样要求收敛：不要新增平行总表、平行进度总览、平行状态矩阵。
 - root `AGENTS.md` 只保留入口协议；详细规则统一下沉到 `docs/11-REFERENCE/`。

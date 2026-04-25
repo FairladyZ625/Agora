@@ -14,6 +14,7 @@ DOCS_REF="HEAD"
 PUSH_AFTER_SYNC=1
 DOCS_DIR_EXPLICIT=0
 PRIVATE_DIR_EXPLICIT=0
+ALLOW_LEGACY_IMPORT=0
 
 CODE_REMOTE_NAME="agora-code-local"
 DOCS_REMOTE_NAME="agora-docs-local"
@@ -22,20 +23,25 @@ usage() {
   cat <<'EOF'
 sync-agora-private.sh
 
-Synchronize the private aggregate repository so that:
+Legacy/import helper for synchronizing split source repositories into Agora_Private:
   - the code repository stays at the private repo root
   - the docs repository stays under docs/
 
-The source of truth remains the original repositories.
-Agora_Private is only a private aggregate mirror.
+This is not the default development workflow anymore.
+Agora_Private is now the private monorepo source of truth.
+
+Use this script only for explicit legacy import, migration, or reviewed
+public-to-private import of external public contributions.
 
 Usage:
-  ./scripts/sync-agora-private.sh
-  ./scripts/sync-agora-private.sh --no-push
-  ./scripts/sync-agora-private.sh --code-dir /path/to/Agora --docs-dir /path/to/agora_doc
-  ./scripts/sync-agora-private.sh --private-dir /path/to/Agora_Private --private-remote <git-url>
+  ./scripts/sync-agora-private.sh --legacy-import-from-split-sources
+  ./scripts/sync-agora-private.sh --legacy-import-from-split-sources --no-push
+  ./scripts/sync-agora-private.sh --legacy-import-from-split-sources --code-dir /path/to/Agora --docs-dir /path/to/agora_doc
+  ./scripts/sync-agora-private.sh --legacy-import-from-split-sources --private-dir /path/to/Agora_Private --private-remote <git-url>
 
 Options:
+  --legacy-import-from-split-sources
+                          Required. Acknowledge this is the old split-source -> private import path
   --code-dir <path>         Source code repository root
   --docs-dir <path>         Source docs repository root
   --private-dir <path>      Local checkout path for Agora_Private
@@ -131,6 +137,10 @@ while [ "$#" -gt 0 ]; do
       PUSH_AFTER_SYNC=0
       shift
       ;;
+    --legacy-import-from-split-sources)
+      ALLOW_LEGACY_IMPORT=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -140,6 +150,11 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+if [ "$ALLOW_LEGACY_IMPORT" -ne 1 ]; then
+  usage >&2
+  fail "refusing to run split-source -> Agora_Private import without --legacy-import-from-split-sources"
+fi
 
 require_command git
 

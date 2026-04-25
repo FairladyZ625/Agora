@@ -58,6 +58,7 @@ test('sync-agora-private.sh aggregates code root and docs subtree and can resync
 
   execFileSync('bash', [
     scriptPath,
+    '--legacy-import-from-split-sources',
     '--code-dir', codeDir,
     '--docs-dir', docsDir,
     '--private-dir', privateCheckout,
@@ -83,6 +84,7 @@ test('sync-agora-private.sh aggregates code root and docs subtree and can resync
 
   execFileSync('bash', [
     scriptPath,
+    '--legacy-import-from-split-sources',
     '--code-dir', codeDir,
     '--docs-dir', docsDir,
     '--private-dir', privateCheckout,
@@ -100,4 +102,18 @@ test('sync-agora-private.sh aggregates code root and docs subtree and can resync
   const secondRemoteHead = git([`--git-dir=${privateRemote}`, 'rev-parse', 'master']);
   assert.notEqual(secondPrivateHead, firstPrivateHead);
   assert.equal(secondPrivateHead, secondRemoteHead);
+});
+
+test('sync-agora-private.sh refuses legacy import without explicit acknowledgement', () => {
+  const result = execFileSync('bash', [
+    '-c',
+    `set +e; bash "${scriptPath}" --no-push >/tmp/agora-sync-test.out 2>/tmp/agora-sync-test.err; printf "%s" "$?"`,
+  ], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+
+  assert.notEqual(result, '0');
+  const stderr = readFileSync('/tmp/agora-sync-test.err', 'utf8');
+  assert.match(stderr, /--legacy-import-from-split-sources/);
 });
