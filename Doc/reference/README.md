@@ -16,3 +16,7 @@ They are intentionally shorter than the private internal docs. Their job is to h
 - [walkthrough-standard.md](./walkthrough-standard.md)
 - [discord-smoke-testing-standard.md](./discord-smoke-testing-standard.md)
 - [private-to-public-release-sync-standard.md](./private-to-public-release-sync-standard.md)
+
+## Repository Visibility Note
+
+The private `docs/` directory is not published into the public code repository. Public contributors only see the curated references in this `Doc/reference/` mirror.

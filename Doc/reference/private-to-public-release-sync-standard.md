@@ -1,22 +1,27 @@
 # Private to Public Release Sync Standard
 
-Agora maintainers may develop long-running work in the private aggregate repo, then publish it to the public split repositories through a controlled projection.
+Agora maintainers may develop private work in `Agora_Private`, then publish only the approved public surface into the public code repository.
 
 ## Repository Roles
 
-- `Agora_Private`: private aggregate workspace. Code lives at the repo root and docs live under `docs/`.
-- `Agora`: public code repo. Receives code, public `Doc/` references, dashboard, `agora-ts`, extensions, and scripts.
-- `agora_doc`: public docs repo. Receives private `docs/` content with the `docs/` prefix stripped.
+- `Agora_Private`: private monorepo. Code lives at the repo root and internal docs live under `docs/`.
+- `Agora`: public code repo. Receives code, public `Doc/` references, dashboard, `agora-ts`, extensions, scripts, and contributor-facing files.
+- `agora_doc`: private legacy/archive docs repo. It is not required for ordinary public code releases.
 
 ## Hard Rules
 
-- Never push a private aggregate branch directly to a public repo.
-- Do not commit `docs/` into the public code repo.
-- Do not commit code repo files into the public docs repo.
-- Use clean temporary worktrees from the latest public `master`.
-- Split mixed work into two PRs: one code PR and one docs PR.
-- Validate each public projection independently before opening the PR.
-- After public merge, sync public code and docs back into `Agora_Private`.
+- Never push a private branch directly to a public repo.
+- Do not commit private `docs/` into the public code repo.
+- Treat the public repo as a projection target, not as the private source of truth.
+- Use clean temporary worktrees from the latest public target branch.
+- Prefer fine-grained public commits over one large release-batch commit.
+- Public commit hashes do not need to match private commit hashes.
+- Public commits should include:
+
+```text
+Private-Commit: <private-sha>
+Private-Source-Branch: <private-branch>
+```
 
 ## Code Projection
 
@@ -33,18 +38,15 @@ Allowed by default:
 Excluded by default:
 
 - `docs/`
-- private-only planning scratch
+- private planning, findings, walkthroughs, and internal architecture notes
 - local screenshots, caches, temporary files
 - secrets and environment files
 
-## Docs Projection
+## Docs Policy
 
-Private docs are mapped into the public docs repo by stripping the `docs/` prefix.
+Internal docs stay in `Agora_Private/docs/` by default.
 
-```text
-Agora_Private/docs/11-REFERENCE/example.md
--> agora_doc/11-REFERENCE/example.md
-```
+Only short contributor-facing references should be mirrored into `Doc/reference/`. A separate docs-repo projection is optional and private; it is used only when maintainers explicitly want selected docs archived there.
 
 ## Validation
 
@@ -56,5 +58,3 @@ For broad frontend changes, prefer:
 cd dashboard
 npm run check:strict
 ```
-
-Docs releases should verify placement, links, indexes, and SSoT / planning / walkthrough updates.
