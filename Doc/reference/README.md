@@ -15,3 +15,4 @@ They are intentionally shorter than the private internal docs. Their job is to h
 - [implementation-ssot-governance.md](./implementation-ssot-governance.md)
 - [walkthrough-standard.md](./walkthrough-standard.md)
 - [discord-smoke-testing-standard.md](./discord-smoke-testing-standard.md)
+- [private-to-public-release-sync-standard.md](./private-to-public-release-sync-standard.md)

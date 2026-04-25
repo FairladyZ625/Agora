@@ -53,22 +53,41 @@ export function WorkflowGraphView({
     () => getWorkflowSurfaceCanvasBounds(layoutNodes, graphMetrics),
     [graphMetrics, layoutNodes],
   );
-  const availableWidth = Math.max(containerWidth - 16, 0);
+  const edgeGeometries = useMemo(
+    () => edges.map((edge, index) => ({
+      edge,
+      index,
+      geometry: buildWorkflowSurfaceEdgePath(edge, layoutNodes, graphMetrics),
+    })),
+    [edges, graphMetrics, layoutNodes],
+  );
+  const contentTopInset = useMemo(() => {
+    const minLabelY = Math.min(
+      0,
+      ...edgeGeometries
+        .map((entry) => entry.geometry?.labelY)
+        .filter((value): value is number => typeof value === 'number'),
+    );
+    return Math.max(0, 28 - minLabelY);
+  }, [edgeGeometries]);
+  const shiftedCanvasHeight = canvasBounds.height + contentTopInset;
+  const renderedCanvasHeight = shiftedCanvasHeight + graphMetrics.nodeHeight;
+  const availableWidth = Math.max(containerWidth - 32, 0);
   const rawScale = availableWidth > 0 ? availableWidth / canvasBounds.width : 1;
   const maxScale = nodes.length <= 4 ? 1.08 : 1.18;
-  const minScale = nodes.length <= 4 ? 0.82 : 0.9;
+  const minScale = nodes.length <= 4 ? 0.24 : 0.3;
   const scale = Math.min(maxScale, Math.max(minScale, rawScale));
   const scaledWidth = canvasBounds.width * scale;
   const offsetX = containerWidth > 0 ? Math.max(0, (containerWidth - scaledWidth) / 2) : 0;
-  const viewportHeight = Math.max(canvasBounds.height * scale + 12, 220);
+  const viewportHeight = Math.max(renderedCanvasHeight * scale + graphMetrics.nodeHeight * scale * 4 + 12, 220);
   const viewportStyle = {
     '--workflow-graph-preview-height': `${viewportHeight}px`,
   } as CSSProperties;
   const canvasStyle = {
     '--workflow-graph-canvas-width': `${canvasBounds.width}px`,
-    '--workflow-graph-canvas-height': `${canvasBounds.height}px`,
+    '--workflow-graph-canvas-height': `${renderedCanvasHeight}px`,
     '--workflow-graph-scale': scale,
-    '--workflow-graph-offset-x': `${offsetX / Math.max(scale, 0.001)}px`,
+    '--workflow-graph-offset-x': `${offsetX}px`,
     '--workflow-graph-node-width': `${graphMetrics.nodeWidth}px`,
     '--workflow-graph-node-height': `${graphMetrics.nodeHeight}px`,
     '--workflow-graph-edge-label-font-size': graphMetrics === COMPACT_WORKFLOW_GRAPH_METRICS ? '10px' : '11px',
@@ -97,7 +116,7 @@ export function WorkflowGraphView({
     <div ref={containerRef} className="workflow-graph-view" data-testid={testId}>
       <div className="workflow-graph-view__viewport" style={viewportStyle}>
         <div className="workflow-graph-view__canvas" style={canvasStyle}>
-        <svg className="template-graph-overlay workflow-graph-view__edges" viewBox={`0 0 ${canvasBounds.width} ${canvasBounds.height}`}>
+        <svg className="template-graph-overlay workflow-graph-view__edges" viewBox={`0 0 ${canvasBounds.width} ${shiftedCanvasHeight}`}>
           <defs>
             <marker id={`${markerId}-advance`} markerWidth="14" markerHeight="14" viewBox="-7 -7 14 14" orient="auto">
               <path d="M -4 -4 L 0 0 L -4 4" className="template-graph-overlay__marker template-graph-overlay__marker--advance" />
@@ -106,8 +125,8 @@ export function WorkflowGraphView({
               <path d="M -4 -4 L 0 0 L -4 4" className="template-graph-overlay__marker template-graph-overlay__marker--reject" />
             </marker>
           </defs>
-          {edges.map((edge, index) => {
-            const geometry = buildWorkflowSurfaceEdgePath(edge, layoutNodes, graphMetrics);
+          <g transform={`translate(0 ${contentTopInset})`}>
+          {edgeGeometries.map(({ edge, index, geometry }) => {
             if (!geometry) {
               return null;
             }
@@ -121,11 +140,11 @@ export function WorkflowGraphView({
               </g>
             );
           })}
+          </g>
         </svg>
 
         <div className="workflow-graph-view__edge-labels" aria-hidden="true">
-          {edges.map((edge, index) => {
-            const geometry = buildWorkflowSurfaceEdgePath(edge, layoutNodes, graphMetrics);
+          {edgeGeometries.map(({ edge, index, geometry }) => {
             if (!geometry) {
               return null;
             }
@@ -134,7 +153,7 @@ export function WorkflowGraphView({
                 key={`label-${edge.id ?? `${edge.from}-${edge.to}-${edge.kind}-${index}`}`}
                 className={`template-graph-edge__label template-graph-edge__label--${edge.kind}`}
                 style={{
-                  transform: `translate(-50%, -50%) translate(${geometry.labelX}px, ${geometry.labelY}px)`,
+                  transform: `translate(-50%, -50%) translate(${geometry.labelX}px, ${geometry.labelY + contentTopInset}px)`,
                 }}
               >
                 {edgeKindLabels[edge.kind as 'advance' | 'reject'] ?? edge.kind}
@@ -147,7 +166,7 @@ export function WorkflowGraphView({
           <div
             key={node.id}
             className={`template-graph-node workflow-graph-view__node${currentNodeId === node.id ? ' template-graph-node--selected workflow-graph-view__node--current' : ''}`}
-            style={{ left: `${node.layout.x}px`, top: `${node.layout.y}px` }}
+            style={{ left: `${node.layout.x}px`, top: `${node.layout.y + contentTopInset}px` }}
           >
             <div className="template-graph-node__eyebrow">
               <span className="template-graph-node__kind">{node.kindLabel ?? 'stage'}</span>

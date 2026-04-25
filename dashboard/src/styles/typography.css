@@ -126,3 +126,10 @@
   color: var(--color-danger-text);
 }
 
+
+
+.type-text-sm {
+  font-size: var(--font-size-body-sm);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}

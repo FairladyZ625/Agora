@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Clock3, Link2, PanelRightOpen, Workflow } from 'lucide-react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { ArrowRight, Clock3, Link2, PanelRightOpen } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
 import { RuntimeLogViewer } from '@/components/ui/RuntimeLogViewer';
 import { WorkflowGraphView } from '@/components/features/WorkflowGraphView';
-import { useTasksPageCopy } from '@/lib/dashboardCopy';
+import { useProjectCurrentWorkPageCopy, useTasksPageCopy } from '@/lib/dashboardCopy';
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
 import { normalizeCraftsmanId } from '@/lib/orchestrationRoles';
 import { buildProjectTaskHref } from '@/lib/projectTaskRoutes';
@@ -13,7 +12,6 @@ import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useTaskStore } from '@/stores/taskStore';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type {
   CraftsmanExecution,
   Subtask,
@@ -23,6 +21,7 @@ import type {
   TaskConversationEntry,
   TaskStatus,
 } from '@/types/task';
+import type { ProjectWorkbench } from '@/types/project';
 
 const TERMINAL_SUBTASK_STATES = new Set(['done', 'failed', 'cancelled', 'archived']);
 
@@ -33,15 +32,32 @@ type TimelineItem = {
   timestamp: string;
 };
 
-function mapStatusEventTimelineItem(entry: TaskConversationEntry): TimelineItem | null {
+type CurrentWorkReferenceItem = {
+  key: string;
+  title: string;
+  kind: string;
+  path: string;
+  updatedAt: string | null;
+};
+
+type CurrentWorkLifecycleStep = {
+  key: string;
+  label: string;
+  status: 'done' | 'active' | 'pending';
+};
+
+function mapStatusEventTimelineItem(
+  entry: TaskConversationEntry,
+  copy: ReturnType<typeof useProjectCurrentWorkPageCopy>,
+): TimelineItem | null {
   if (!entry.statusEvent) {
     return null;
   }
   const detailParts = [
     entry.statusEvent.taskState,
-    entry.statusEvent.currentStage ? `stage ${entry.statusEvent.currentStage}` : null,
-    entry.statusEvent.executionKind ? `execution: ${entry.statusEvent.executionKind}` : null,
-    entry.statusEvent.controllerRef ? `controller ${entry.statusEvent.controllerRef}` : null,
+    entry.statusEvent.currentStage ? `${copy.stageEventPrefix} ${entry.statusEvent.currentStage}` : null,
+    entry.statusEvent.executionKind ? `${copy.executionPrefix}: ${entry.statusEvent.executionKind}` : null,
+    entry.statusEvent.controllerRef ? `${copy.controllerPrefix} ${entry.statusEvent.controllerRef}` : null,
   ].filter((value): value is string => Boolean(value));
   return {
     key: `status-${entry.id}`,
@@ -51,7 +67,10 @@ function mapStatusEventTimelineItem(entry: TaskConversationEntry): TimelineItem 
   };
 }
 
-function buildTaskTimeline(status: TaskStatus | null | undefined): TimelineItem[] {
+function buildTaskTimeline(
+  status: TaskStatus | null | undefined,
+  copy: ReturnType<typeof useProjectCurrentWorkPageCopy>,
+): TimelineItem[] {
   if (!status) {
     return [];
   }
@@ -62,7 +81,7 @@ function buildTaskTimeline(status: TaskStatus | null | undefined): TimelineItem[
     timestamp: entry.created_at,
   }));
   const statusItems = (status.conversation ?? [])
-    .map(mapStatusEventTimelineItem)
+    .map((entry) => mapStatusEventTimelineItem(entry, copy))
     .filter((entry): entry is TimelineItem => entry !== null);
   return [...flowItems, ...statusItems].sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
 }
@@ -85,8 +104,20 @@ function displayAgentId(agentId: string) {
   return normalizeCraftsmanId(agentId);
 }
 
+function compactText(value: string | null | undefined, maxLength: number) {
+  const text = value?.trim();
+  if (!text) {
+    return '';
+  }
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, maxLength).trimEnd()}...`;
+}
+
 function createFallbackTask(
   summary: { id: string; title: string; state: string; projectId: string | null },
+  copy: ReturnType<typeof useProjectCurrentWorkPageCopy>,
 ): Task {
   return {
     id: summary.id,
@@ -102,8 +133,8 @@ function createFallbackTask(
     authority: null,
     controllerRef: null,
     current_stage: null,
-    teamLabel: 'Project workspace',
-    workflowLabel: 'project-workflow',
+    teamLabel: copy.fallbackTeamLabel,
+    workflowLabel: copy.fallbackWorkflowLabel,
     memberCount: 0,
     isReviewStage: false,
     sourceState: summary.state,
@@ -115,6 +146,90 @@ function createFallbackTask(
     created_at: new Date(0).toISOString(),
     updated_at: new Date(0).toISOString(),
   };
+}
+
+function buildReferenceItems(
+  project: ProjectWorkbench,
+  copy: ReturnType<typeof useProjectCurrentWorkPageCopy>,
+): CurrentWorkReferenceItem[] {
+  const items: CurrentWorkReferenceItem[] = [];
+  if (project.surfaces.index) {
+    const indexTitle = project.surfaces.index.title ?? `${project.project.name} index`;
+    items.push({
+      key: 'index',
+      title: indexTitle === project.project.name ? `${indexTitle} index` : indexTitle,
+      kind: copy.referenceKindLabels.index,
+      path: project.surfaces.index.path,
+      updatedAt: project.surfaces.index.updatedAt,
+    });
+  }
+  if (project.surfaces.timeline) {
+    items.push({
+      key: 'timeline',
+      title: project.surfaces.timeline.title ?? `${project.project.name} timeline`,
+      kind: copy.referenceKindLabels.timeline,
+      path: project.surfaces.timeline.path,
+      updatedAt: project.surfaces.timeline.updatedAt,
+    });
+  }
+  for (const knowledge of project.work.knowledge.slice(0, 4)) {
+    items.push({
+      key: `knowledge-${knowledge.slug}`,
+      title: knowledge.title ?? knowledge.slug,
+      kind: knowledge.kind,
+      path: knowledge.path,
+      updatedAt: knowledge.updatedAt,
+    });
+  }
+  for (const recap of project.work.recaps.slice(0, 2)) {
+    items.push({
+      key: `recap-${recap.taskId}`,
+      title: recap.title ?? recap.taskId,
+      kind: copy.referenceKindLabels.recap,
+      path: recap.summaryPath,
+      updatedAt: recap.updatedAt,
+    });
+  }
+  return items;
+}
+
+function buildLifecycleSteps(
+  task: Task | null,
+  blueprint: TaskBlueprint | undefined,
+  copy: ReturnType<typeof useProjectCurrentWorkPageCopy>,
+): CurrentWorkLifecycleStep[] {
+  const blueprintNodes = blueprint?.nodes.slice(0, 5).map((node) => node.name ?? node.id) ?? [];
+  const fallbackNodes = [
+    copy.lifecycle.briefing,
+    task?.current_stage ?? copy.lifecycle.activeStage,
+    copy.lifecycle.execution,
+    copy.lifecycle.verification,
+    copy.lifecycle.harvest,
+  ];
+  const labels = blueprintNodes.length >= 3 ? blueprintNodes : fallbackNodes;
+  const activeIndex = Math.max(0, labels.findIndex((label) => label === (task?.current_stage ?? '')));
+  return labels.slice(0, 5).map((label, index) => ({
+    key: `${label}-${index}`,
+    label,
+    status: index < activeIndex ? 'done' : index === activeIndex ? 'active' : 'pending',
+  }));
+}
+
+function getGovernancePosture(
+  task: Task | null,
+  warnings: number,
+  copy: ReturnType<typeof useProjectCurrentWorkPageCopy>,
+) {
+  if (!task) {
+    return { label: copy.noActiveTask, tone: 'neutral' };
+  }
+  if (warnings > 0 || task.priority === 'high' || task.gateType === 'approval' || task.gateType === 'quorum') {
+    return { label: copy.highImpactChange, tone: 'critical' };
+  }
+  if (task.state === 'gate_waiting' || task.state === 'blocked' || task.state === 'paused') {
+    return { label: copy.reviewNeeded, tone: 'warning' };
+  }
+  return { label: copy.executionReady, tone: 'healthy' };
 }
 
 function TaskBlueprintSection({
@@ -183,8 +298,8 @@ export function ProjectCurrentWorkPage() {
   const { projectId, taskId } = useParams<{ projectId: string; taskId?: string }>();
   const { t } = useTranslation();
   const tasksPageCopy = useTasksPageCopy();
+  const currentWorkCopy = useProjectCurrentWorkPageCopy();
   const navigate = useNavigate();
-  const isMobile = useMediaQuery('(max-width: 767px)');
 
   const selectedProject = useProjectStore((state) => state.selectedProject);
   const detailLoading = useProjectStore((state) => state.detailLoading);
@@ -214,6 +329,7 @@ export function ProjectCurrentWorkPage() {
   const cancelSubtask = useTaskStore((state) => state.cancelSubtask);
 
   const sessionAccountId = useSessionStore((state) => state.accountId);
+  const sessionUsername = useSessionStore((state) => state.username);
   const { showMessage } = useFeedbackStore();
 
   const [actionActor, setActionActor] = useState('');
@@ -228,8 +344,10 @@ export function ProjectCurrentWorkPage() {
 
   const projectTaskItems = useMemo(() => {
     const taskLookup = new Map(tasks.map((task) => [task.id, task]));
-    return (selectedProject?.work.tasks ?? []).map((summary) => taskLookup.get(summary.id) ?? createFallbackTask(summary));
-  }, [selectedProject?.work.tasks, tasks]);
+    return (selectedProject?.work.tasks ?? []).map((summary) => (
+      taskLookup.get(summary.id) ?? createFallbackTask(summary, currentWorkCopy)
+    ));
+  }, [currentWorkCopy, selectedProject?.work.tasks, tasks]);
 
   const resolvedTaskId = taskId ?? selectedTaskId ?? projectTaskItems[0]?.id ?? null;
 
@@ -252,7 +370,7 @@ export function ProjectCurrentWorkPage() {
     ?? projectTaskItems.find((task) => task.id === resolvedTaskId)
     ?? null;
   const activeStatus = activeTask && selectedTaskStatus?.task.id === activeTask.id ? selectedTaskStatus : null;
-  const activeTimeline = useMemo(() => buildTaskTimeline(activeStatus), [activeStatus]);
+  const activeTimeline = useMemo(() => buildTaskTimeline(activeStatus, currentWorkCopy), [activeStatus, currentWorkCopy]);
   const activeBlueprint = activeStatus?.taskBlueprint;
   const activeSubtasks = activeStatus?.subtasks ?? [];
   const activeSubtaskExecutions = activeStatus?.subtaskExecutions ?? {};
@@ -311,14 +429,14 @@ export function ProjectCurrentWorkPage() {
         : tasksPageCopy.executionTailSnapshotLabel)
     : null;
 
-  const activeMembers = activeStatus?.task.teamMembers ?? activeTask?.teamMembers ?? [];
-  const activeGateType = activeStatus?.task.gateType ?? activeTask?.gateType ?? null;
-  const canRunGateActions = activeTask?.sourceState === 'active';
+  const activeMembers = activeStatus?.task.teamMembers ?? [];
+  const activeGateType = activeStatus?.task.gateType ?? null;
+  const canRunGateActions = activeStatus?.task.sourceState === 'active';
   const canRunApprovalActions = canRunGateActions
     && activeGateType === 'approval'
     && (
-      activeTask?.authority?.approverAccountId == null
-      || (sessionAccountId != null && activeTask.authority.approverAccountId === sessionAccountId)
+      activeStatus.task.authority?.approverAccountId == null
+      || (sessionAccountId != null && activeStatus.task.authority.approverAccountId === sessionAccountId)
     );
   const preferredActorId =
     !activeTask
@@ -338,9 +456,15 @@ export function ProjectCurrentWorkPage() {
       return;
     }
     try {
+      const isHumanReviewAction = action === 'approve' || action === 'reject';
+      const dashboardActor = sessionUsername?.trim();
+      if (isHumanReviewAction && !dashboardActor) {
+        throw new Error('missing dashboard session actor');
+      }
+      const actorId = overrides.actorId ?? (isHumanReviewAction ? dashboardActor : resolvedActionActor);
       await runTaskAction(action, {
         taskId: activeTask.id,
-        actorId: overrides.actorId ?? resolvedActionActor,
+        actorId,
         note: overrides.note ?? actionNote,
         subtaskId: overrides.subtaskId,
         vote: overrides.vote,
@@ -514,6 +638,10 @@ export function ProjectCurrentWorkPage() {
     }
   };
 
+  const scrollToWorkbenchSection = (sectionId: string) => {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   function renderExecutionStatus(execution: CraftsmanExecution) {
     const inputRequest = execution.callbackPayload?.inputRequest;
     return (
@@ -568,10 +696,44 @@ export function ProjectCurrentWorkPage() {
     );
   }
 
+  const referenceItems = selectedProject ? buildReferenceItems(selectedProject, currentWorkCopy) : [];
+  const referenceCoverage = Math.min(1, referenceItems.length / 6);
+  const relatedTasks = activeTask ? projectTaskItems.filter((task) => task.id !== activeTask.id).slice(0, 4) : projectTaskItems.slice(0, 4);
+  const lifecycleSteps = buildLifecycleSteps(activeTask, activeBlueprint, currentWorkCopy);
+  const runtimeWarnings = activeGovernanceSnapshot?.warnings.length ?? 0;
+  const governancePosture = getGovernancePosture(activeTask, runtimeWarnings, currentWorkCopy);
+  const runtimeHealth = activeGovernanceSnapshot?.hostPressureStatus ?? 'unavailable';
+  const participantItems = activeMembers.slice(0, 5);
+  const executionTimeline = activeTimeline.slice(0, 5);
+  const activeExecutionCount = activeGovernanceSnapshot?.activeExecutions ?? selectedSubtaskExecutions.length;
+  const keyImpactAreas = [
+    { label: currentWorkCopy.impactLabels.activeSubtasks, value: activeSubtasks.length },
+    { label: currentWorkCopy.impactLabels.executions, value: selectedSubtaskExecutions.length },
+    { label: currentWorkCopy.impactLabels.references, value: referenceItems.length },
+    { label: currentWorkCopy.impactLabels.runtimeWarnings, value: runtimeWarnings },
+  ];
+  const runtimeSignalRows = [
+    {
+      label: currentWorkCopy.liveSessionsLabel,
+      value: activeExecutionCount,
+      fill: Math.min(1, activeExecutionCount / 4),
+    },
+    {
+      label: currentWorkCopy.agentsActiveLabel,
+      value: participantItems.length,
+      fill: Math.min(1, participantItems.length / 5),
+    },
+    {
+      label: currentWorkCopy.sloPostureLabel,
+      value: runtimeWarnings === 0 ? currentWorkCopy.clearValue : runtimeWarnings,
+      fill: runtimeWarnings === 0 ? 1 : Math.max(0.18, Math.min(1, runtimeWarnings / 5)),
+    },
+  ];
+
   if (detailLoading) {
     return (
-      <section className="surface-panel surface-panel--workspace">
-        <p className="type-body-sm">Loading current work…</p>
+      <section className="surface-panel surface-panel--workspace surface-panel--context-anchor current-work-mgo__loading">
+        <p className="type-body-sm">{currentWorkCopy.loadingTitle}</p>
       </section>
     );
   }
@@ -579,592 +741,602 @@ export function ProjectCurrentWorkPage() {
   if (!selectedProject || !projectId) {
     return (
       <section className="surface-panel surface-panel--workspace">
-        <p className="type-body-sm">{projectError ?? 'Current work is unavailable.'}</p>
+        <p className="type-body-sm">{projectError ?? currentWorkCopy.unavailableTitle}</p>
       </section>
     );
   }
 
   return (
-    <div className="workspace-page workspace-page--locked">
-      <section className="surface-panel surface-panel--workspace">
-        <div className="workbench-masthead">
+    <div className="current-work-mgo interior-page">
+      <h2 className="sr-only">{currentWorkCopy.srTitle}</h2>
+      <section className="current-work-mgo__command surface-panel surface-panel--workspace surface-panel--context-anchor">
+        <div className="current-work-mgo__command-cell">
+          <span className="current-work-mgo__icon"><PanelRightOpen size={18} /></span>
           <div>
-            <p className="page-kicker">PROJECT WORKSPACE</p>
-            <h2 className="page-title">Current Work</h2>
-            <p className="page-summary">{selectedProject.project.name}</p>
+            <p className="page-kicker">{currentWorkCopy.commandProjectLabel}</p>
+            <strong>{selectedProject.project.name}</strong>
           </div>
-          <div className="workbench-masthead__signals">
-            <div className="inline-stat">
-              <span className="inline-stat__label">{tasksPageCopy.stats.currentMatches}</span>
-              <span className="inline-stat__value">{projectTaskItems.length}</span>
-            </div>
-            <div className="inline-stat">
-              <span className="inline-stat__label">{tasksPageCopy.stats.awaitingReview}</span>
-              <span className="inline-stat__value">{projectTaskItems.filter((task) => task.state === 'gate_waiting').length}</span>
-            </div>
-            <div className="inline-stat">
-              <span className="inline-stat__label">{tasksPageCopy.stats.currentFocus}</span>
-              <span className="inline-stat__value">{activeTask?.current_stage ?? tasksPageCopy.stageFallback}</span>
-            </div>
+          <span className="status-pill status-pill--success">{selectedProject.overview.status}</span>
+        </div>
+        <div className="current-work-mgo__command-cell current-work-mgo__command-cell--wide">
+          <div>
+            <p className="page-kicker">{currentWorkCopy.workspaceLabel}</p>
+            <strong>{currentWorkCopy.workspaceTitle}</strong>
           </div>
         </div>
-
-        {taskError ? (
-          <div className="inline-alert inline-alert--danger">{taskError}</div>
-        ) : null}
+        <div className="current-work-mgo__command-cell">
+          <div>
+            <p className="page-kicker">{currentWorkCopy.taskIdLabel}</p>
+            <strong>{activeTask?.id ?? tasksPageCopy.stageFallback}</strong>
+          </div>
+        </div>
+        <div className="current-work-mgo__command-cell">
+          <div>
+            <p className="page-kicker">{currentWorkCopy.stageLabel}</p>
+            <strong>{activeTask?.current_stage ?? activeTask?.state ?? tasksPageCopy.stageFallback}</strong>
+          </div>
+        </div>
+        <div className={`current-work-mgo__command-cell current-work-mgo__posture current-work-mgo__posture--${governancePosture.tone}`}>
+          <div>
+            <p className="page-kicker">{currentWorkCopy.governancePostureLabel}</p>
+            <strong>{governancePosture.label}</strong>
+          </div>
+        </div>
       </section>
 
-      <div className={isMobile ? 'workbench-grid workbench-grid--page' : 'workbench-grid workbench-grid--tasks'}>
-        <section className="workbench-pane task-pane task-pane--queue">
-          <div className="task-pane__header">
-            <div>
-              <p className="page-kicker">PROJECT TASKS</p>
-              <h3 className="section-title">{tasksPageCopy.listTitle}</h3>
-            </div>
-            <span className="status-pill status-pill--neutral">
-              {projectTaskItems.length}
-              {tasksPageCopy.listCountUnit}
-            </span>
-          </div>
+      <section className="current-work-mgo__tabs surface-panel surface-panel--workspace">
+        {currentWorkCopy.tabs.map((label, index) => (
+          <button
+            key={label}
+            type="button"
+            className={index === 0 ? 'current-work-mgo__tab is-active' : 'current-work-mgo__tab'}
+            aria-pressed={index === 0}
+            onClick={() => scrollToWorkbenchSection(
+              [
+                'current-work-section-0',
+                'current-work-section-1',
+                'current-work-section-2',
+                'current-work-section-3',
+                'current-work-execution-console',
+                'current-work-section-5',
+                'current-work-section-6',
+              ][index] ?? 'current-work-section-0',
+            )}
+          >
+            {label}
+            {label === currentWorkCopy.tabs[1] ? <b>{referenceItems.length}</b> : null}
+            {label === currentWorkCopy.tabs[2] ? <b>{participantItems.length}</b> : null}
+          </button>
+        ))}
+      </section>
 
-          <div className="workbench-scroll workbench-scroll--list task-pane__scroll">
-            <div className="dense-list">
-              {projectTaskItems.length === 0 ? (
-                <div className="empty-state">
-                  <p className="type-heading-sm">No project tasks yet.</p>
-                  <p className="type-body-sm mt-2">Create or attach work to this project, then the execution surface will appear here.</p>
+      {taskError ? <div className="inline-alert inline-alert--danger">{taskError}</div> : null}
+
+      <section className="current-work-mgo__layout">
+        <aside className="current-work-mgo__left">
+          <div id="current-work-section-1" className="surface-panel surface-panel--workspace current-work-mgo__panel current-work-mgo__reference">
+            <div className="section-title-row">
+              <div>
+                <p className="page-kicker">{currentWorkCopy.referenceBundleLabel}</p>
+                  <h3 className="section-title">{referenceItems[0]?.title ?? `${selectedProject.project.name} context`}</h3>
+              </div>
+              <span className={referenceItems.length > 0 ? 'status-pill status-pill--success' : 'status-pill status-pill--warning'}>
+                {referenceItems.length > 0 ? currentWorkCopy.linkedLabel : currentWorkCopy.missingLabel}
+              </span>
+            </div>
+            <div
+              className="current-work-mgo__reference-meter"
+              style={{ '--reference-meter-value': `${Math.round(referenceCoverage * 100)}%` } as CSSProperties}
+            >
+              <span />
+            </div>
+            <div className="current-work-mgo__reference-stats">
+              <span>{referenceItems.length} {currentWorkCopy.itemsUnit}</span>
+              <span>{selectedProject.work.knowledge.length} {currentWorkCopy.sourcesUnit}</span>
+              <span>{selectedProject.work.recaps.length} {currentWorkCopy.recapsUnit}</span>
+            </div>
+            <div className="current-work-mgo__reference-list">
+              {referenceItems.length === 0 ? (
+                <p className="type-body-sm">{currentWorkCopy.noReferences}</p>
+              ) : referenceItems.slice(0, 6).map((item) => (
+                <div key={item.key} className="current-work-mgo__reference-row">
+                  <Link2 size={14} />
+                  <span>
+                    <strong>{item.title}</strong>
+                    <small>{item.kind} · {item.path}</small>
+                  </span>
                 </div>
-              ) : (
-                projectTaskItems.map((task) => (
-                  <Link
-                    key={task.id}
-                    to={buildProjectTaskHref(task.id, projectId)}
-                    className={task.id === activeTask?.id ? 'dense-row task-queue-row dense-row--active' : 'dense-row task-queue-row'}
-                    onClick={() => setActionActor('')}
-                  >
-                    <div className="dense-row__main task-queue-row__main">
-                      <div className="dense-row__titleblock">
-                        <span className="type-mono-xs task-queue-row__id">{task.id}</span>
-                        <strong className="dense-row__title task-queue-row__title">{task.title}</strong>
-                      </div>
-                      <div className="dense-row__meta task-queue-row__meta">
-                        <StateBadge state={task.state} />
-                        <PriorityBadge priority={task.priority} />
-                        <span>{task.teamLabel}</span>
-                        <span>{task.workflowLabel}</span>
-                      </div>
-                    </div>
-                    <span className="dense-row__time task-queue-row__time">{formatRelativeTimestamp(task.updated_at)}</span>
-                  </Link>
-                ))
-              )}
+              ))}
+            </div>
+            <Link className="text-action" to={`/projects/${projectId}/context`}>
+              {currentWorkCopy.fullContextAction} <ArrowRight size={14} />
+            </Link>
+          </div>
+
+          <div className="surface-panel surface-panel--workspace current-work-mgo__panel">
+            <div className="section-title-row">
+              <h3 className="section-title">{currentWorkCopy.relatedWorkTitle}</h3>
+              <span className="status-pill status-pill--neutral">{projectTaskItems.length}</span>
+            </div>
+            <div className="current-work-mgo__related-list">
+              {projectTaskItems.length === 0 ? (
+                <p className="type-body-sm">{currentWorkCopy.noProjectTasks}</p>
+              ) : [activeTask, ...relatedTasks].filter((task): task is Task => Boolean(task)).slice(0, 5).map((task) => (
+                <Link
+                  key={task.id}
+                  to={buildProjectTaskHref(task.id, projectId)}
+                  className={task.id === activeTask?.id ? 'current-work-mgo__related-row is-active' : 'current-work-mgo__related-row'}
+                  onClick={() => setActionActor('')}
+                >
+                  <Clock3 size={14} />
+                  <span>
+                    <strong>{task.title}</strong>
+                    <small>{task.id} · {task.state}</small>
+                  </span>
+                  <b>{task.id === activeTask?.id ? currentWorkCopy.focusLabel : task.state}</b>
+                </Link>
+              ))}
             </div>
           </div>
-        </section>
+        </aside>
 
-        <section className="workbench-pane task-pane task-pane--flow">
-              {activeTask ? (
-                <div className="task-flow__stack">
-                  <div className="task-pane__header task-pane__header--flow">
-                    <div>
-                      <p className="page-kicker">{tasksPageCopy.detailKicker}</p>
-                      <h3 className="section-title">{tasksPageCopy.quickViewTitle}</h3>
-                    </div>
-                    <div className="task-flow__header-badges">
-                      <StateBadge state={activeTask.state} />
-                      <PriorityBadge priority={activeTask.priority} />
-                    </div>
-                  </div>
+        <main id="current-work-section-0" className="surface-panel surface-panel--workspace current-work-mgo__center">
+          {activeTask ? (
+            <>
+              <div className="current-work-mgo__brief-head">
+                <div>
+                  <p className={`current-work-mgo__impact current-work-mgo__impact--${governancePosture.tone}`}>{governancePosture.label}</p>
+                  <h1>{activeTask.title}</h1>
+                  <p>{compactText(activeTask.description, 380) || tasksPageCopy.briefFallback}</p>
+                </div>
+                <button type="button" className="button-secondary" onClick={() => navigate(buildProjectTaskHref(activeTask.id, projectId))}>
+                  {tasksPageCopy.detailAction}
+                </button>
+              </div>
 
-                  <div className="task-hero-card">
-                    <span className="type-mono-sm task-hero-card__id">{activeTask.id}</span>
-                    <h4 className="type-heading-md task-hero-card__title">{activeTask.title}</h4>
-                    <p className="type-body-sm task-hero-card__summary">
-                      {activeTask.description ?? tasksPageCopy.briefFallback}
-                    </p>
-                    <div className="task-hero-card__footer">
-                      <div className="task-hero-card__metric">
-                        <span className="field-label">{tasksPageCopy.stageLabel}</span>
-                        <strong>{activeTask.current_stage ?? tasksPageCopy.stageFallback}</strong>
-                      </div>
-                      <div className="task-hero-card__metric">
-                        <span className="field-label">{tasksPageCopy.workflowLabel}</span>
-                        <strong>{activeTask.workflowLabel}</strong>
-                      </div>
-                      <div className="task-hero-card__metric">
-                        <span className="field-label">{tasksPageCopy.updatedLabel}</span>
-                        <strong>{formatRelativeTimestamp(activeTask.updated_at)}</strong>
-                      </div>
-                    </div>
-                  </div>
+              <div className="current-work-mgo__owners">
+                <div>
+                  <span>{currentWorkCopy.requestedByLabel}</span>
+                  <strong>{activeTask.creator}</strong>
+                  <small>{activeTask.teamLabel}</small>
+                </div>
+                <div>
+                  <span>{currentWorkCopy.ownedByLabel}</span>
+                  <strong>{activeTask.controllerRef ?? resolvedActionActor}</strong>
+                  <small>{activeTask.workflowLabel}</small>
+                </div>
+                <div>
+                  <span>{currentWorkCopy.reviewGateLabel}</span>
+                  <strong>{activeGateType ?? currentWorkCopy.openGateLabel}</strong>
+                  <small>{activeTask.isReviewStage ? currentWorkCopy.reviewStageLabel : activeTask.state}</small>
+                </div>
+                <div>
+                  <span>{currentWorkCopy.updatedLabel}</span>
+                  <strong>{formatRelativeTimestamp(activeTask.updated_at)}</strong>
+                  <small>{activeTask.current_stage ?? tasksPageCopy.stageFallback}</small>
+                </div>
+              </div>
 
-                  <div className="task-authority__section task-flow__section">
-                    <div className="task-flow__facts">
-                      <div className="detail-card">
-                        <Workflow size={16} className="detail-card__icon" />
-                        <span className="detail-card__label">{tasksPageCopy.stageLabel}</span>
-                        <strong className="detail-card__value">{activeTask.current_stage ?? tasksPageCopy.stageFallback}</strong>
-                      </div>
-                      <div className="detail-card">
-                        <Link2 size={16} className="detail-card__icon" />
-                        <span className="detail-card__label">{tasksPageCopy.workflowLabel}</span>
-                        <strong className="detail-card__value">{activeTask.workflowLabel}</strong>
-                      </div>
-                      <div className="detail-card">
-                        <PanelRightOpen size={16} className="detail-card__icon" />
-                        <span className="detail-card__label">{tasksPageCopy.teamLabel}</span>
-                        <strong className="detail-card__value">{activeTask.teamLabel}</strong>
-                      </div>
-                      <div className="detail-card">
-                        <PanelRightOpen size={16} className="detail-card__icon" />
-                        <span className="detail-card__label">{tasksPageCopy.controllerLabel}</span>
-                        <strong className="detail-card__value">{activeTask.controllerRef ?? tasksPageCopy.stageFallback}</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  <TaskBlueprintSection
-                    blueprint={activeBlueprint}
-                    copy={tasksPageCopy}
-                    currentStageId={activeStatus?.task.current_stage ?? null}
-                  />
-
-                  <div className="task-authority__section task-flow__section">
-                    <div className="flex items-center justify-between gap-3">
-                      <h4 className="section-title">执行控制面</h4>
-                      <button type="button" className="button-secondary" onClick={() => void runObserve()}>
-                        {tasksPageCopy.executionObserveAction}
+              <section className="current-work-mgo__action-bar current-work-mgo__action-bar--primary">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => scrollToWorkbenchSection('current-work-execution-console')}
+                >
+                  {currentWorkCopy.consoleJumpAction}
+                </button>
+                {canRunApprovalActions ? (
+                  <>
+                    <button type="button" className="button-primary" onClick={() => void runAction('approve')}>
+                      {tasksPageCopy.approveAction}
+                    </button>
+                    <button type="button" className="button-secondary" onClick={() => void runAction('reject')}>
+                      {tasksPageCopy.rejectAction}
+                    </button>
+                  </>
+                ) : null}
+                {canRunGateActions && activeGateType === 'quorum' ? (
+                  <>
+                    <button type="button" className="button-primary" onClick={() => void runAction('confirm', { vote: 'approve' })}>
+                      {tasksPageCopy.confirmApproveAction}
+                    </button>
+                    <button type="button" className="button-secondary" onClick={() => void runAction('confirm', { vote: 'reject' })}>
+                      {tasksPageCopy.confirmRejectAction}
+                    </button>
+                  </>
+                ) : null}
+                {activeStatus?.task.sourceState === 'active' ? (
+                  <>
+                    <button type="button" className="button-primary" onClick={() => void runAction('advance')}>
+                      {tasksPageCopy.advanceAction}
+                    </button>
+                    <button type="button" className="button-secondary" onClick={() => void runAction('pause')}>
+                      {tasksPageCopy.pauseAction}
+                    </button>
+                    <button type="button" className="button-danger" onClick={() => void runAction('cancel')}>
+                      {tasksPageCopy.cancelAction}
+                    </button>
+                  </>
+                ) : null}
+                {activeStatus?.task.sourceState === 'paused' ? (
+                  <button type="button" className="button-primary" onClick={() => void runAction('resume')}>
+                    {tasksPageCopy.resumeAction}
+                  </button>
+                ) : null}
+                {activeStatus?.task.sourceState === 'blocked' ? (
+                  <button type="button" className="button-primary" onClick={() => void runAction('unblock')}>
+                    {tasksPageCopy.unblockAction}
+                  </button>
+                ) : null}
+                {(activeStatus?.subtasks ?? []).some((subtask) => subtask.status !== 'done') ? (
+                  (activeStatus?.subtasks ?? [])
+                    .filter((subtask) => subtask.status !== 'done')
+                    .map((subtask) => (
+                      <button
+                        key={subtask.id}
+                        type="button"
+                        className="button-secondary"
+                        onClick={() =>
+                          void runAction('subtask_done', {
+                            subtaskId: subtask.id,
+                            actorId: subtask.assignee,
+                            note: actionNote || t('common.done'),
+                          })
+                        }
+                      >
+                        {t('common.markSubtaskDone', { id: subtask.id })}
                       </button>
+                    ))
+                ) : null}
+              </section>
+
+              <div className="current-work-mgo__lifecycle">
+                {lifecycleSteps.map((step) => (
+                  <span key={step.key} className={`current-work-mgo__step current-work-mgo__step--${step.status}`}>
+                    <b>{step.status === 'done' ? '✓' : step.status === 'active' ? '•' : ''}</b>
+                    {step.label}
+                  </span>
+                ))}
+              </div>
+
+              <section className="current-work-mgo__brief">
+                <p className="page-kicker">{currentWorkCopy.briefLabel}</p>
+                <p>
+                  {activeTask.workflowLabel}
+                  {' / '}
+                  {activeTask.teamLabel}
+                  {' / '}
+                  {activeTask.current_stage ?? activeTask.state}
+                </p>
+              </section>
+
+              <section className="current-work-mgo__rationale">
+                <p className="page-kicker">{currentWorkCopy.runtimeRationaleLabel}</p>
+                <p>
+                  {activeTimeline[0]?.label || currentWorkCopy.runtimeRationaleEmpty}
+                </p>
+                <div
+                  className="current-work-mgo__reference-meter"
+                  style={{ '--reference-meter-value': `${Math.round(Math.min(1, activeTimeline.length / 5) * 100)}%` } as CSSProperties}
+                >
+                  <span />
+                </div>
+                <small>
+                  {referenceItems.length} {currentWorkCopy.impactLabels.references} · {activeSubtasks.length} {currentWorkCopy.impactLabels.activeSubtasks} · {runtimeWarnings} {currentWorkCopy.impactLabels.runtimeWarnings}
+                </small>
+              </section>
+
+              <section className="current-work-mgo__impact-grid">
+                {keyImpactAreas.map((item) => (
+                  <div key={item.label}>
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </div>
+                ))}
+              </section>
+
+              <section id="current-work-section-5" className="current-work-mgo__attachments">
+                <p className="page-kicker">{currentWorkCopy.attachmentsLabel}</p>
+                <div>
+                  {referenceItems.slice(0, 4).map((item) => (
+                    <span key={item.key}>
+                      <Link2 size={14} />
+                      {item.title}
+                    </span>
+                  ))}
+                  {referenceItems.length === 0 ? <span>{currentWorkCopy.noAttachments}</span> : null}
+                </div>
+              </section>
+            </>
+          ) : (
+            <div className="empty-state">
+              <p className="type-heading-sm">{tasksPageCopy.emptyTitle}</p>
+              <p className="type-body-sm mt-2">{tasksPageCopy.emptySummary}</p>
+            </div>
+          )}
+        </main>
+
+        <aside className="current-work-mgo__right">
+          <section id="current-work-section-6" className="surface-panel surface-panel--workspace current-work-mgo__panel">
+            <div className="section-title-row">
+              <div>
+                <p className="page-kicker">{currentWorkCopy.runtimeTruthLabel}</p>
+                <h3 className="section-title">{currentWorkCopy.runtimeHealthTitle}</h3>
+              </div>
+              <span className={`status-pill ${runtimeHealth === 'healthy' ? 'status-pill--success' : 'status-pill--warning'}`}>{runtimeHealth}</span>
+            </div>
+            <div className="current-work-mgo__runtime-line">
+              {runtimeSignalRows.map((item) => (
+                <span
+                  key={item.label}
+                  style={{ '--runtime-signal-value': `${Math.round(item.fill * 100)}%` } as CSSProperties}
+                >
+                  <b>{item.value}</b>
+                  <small>{item.label}</small>
+                </span>
+              ))}
+            </div>
+            <div className="current-work-mgo__runtime-metrics">
+              <span><strong>{activeExecutionCount}</strong>{currentWorkCopy.liveSessionsLabel}</span>
+              <span><strong>{participantItems.length}</strong>{currentWorkCopy.agentsActiveLabel}</span>
+              <span><strong>{runtimeWarnings === 0 ? currentWorkCopy.clearValue : runtimeWarnings}</strong>{currentWorkCopy.sloPostureLabel}</span>
+              <span><strong>{formatGovernanceMemoryValue(activeStatus, tasksPageCopy.stageFallback)}</strong>{currentWorkCopy.memoryLabel}</span>
+            </div>
+          </section>
+
+          <section id="current-work-section-3" className="surface-panel surface-panel--workspace current-work-mgo__panel">
+            <div className="section-title-row">
+              <h3 className="section-title">{currentWorkCopy.executionTimelineTitle}</h3>
+              <span className="status-pill status-pill--success">{currentWorkCopy.liveLabel}</span>
+            </div>
+            <div className="current-work-mgo__timeline">
+              {executionTimeline.length === 0 ? (
+                <p className="type-body-sm">{tasksPageCopy.timelineEmptyDetail}</p>
+              ) : executionTimeline.map((entry) => (
+                <div key={entry.key} className="current-work-mgo__timeline-row">
+                  <time>{formatRelativeTimestamp(entry.timestamp)}</time>
+                  <span>
+                    <strong>{entry.label}</strong>
+                    <small>{compactText(entry.detail, 92) || tasksPageCopy.timelineEmptyDetail}</small>
+                  </span>
+                </div>
+              ))}
+            </div>
+            {activeTask ? (
+              <button
+                type="button"
+                className="text-action"
+                onClick={() => navigate(buildProjectTaskHref(activeTask.id, projectId))}
+              >
+                {currentWorkCopy.fullTraceAction} <ArrowRight size={14} />
+              </button>
+            ) : null}
+          </section>
+
+          <section id="current-work-section-2" className="surface-panel surface-panel--workspace current-work-mgo__panel">
+            <div className="section-title-row">
+              <h3 className="section-title">{currentWorkCopy.currentParticipantsTitle}</h3>
+              <span className="status-pill status-pill--neutral">{participantItems.length}</span>
+            </div>
+            <div className="current-work-mgo__participants">
+              {participantItems.length === 0 ? (
+                <p className="type-body-sm">{currentWorkCopy.noParticipants}</p>
+              ) : participantItems.map((member) => (
+                <div key={`${member.role}-${member.agentId}`} className="current-work-mgo__participant">
+                  <span>{displayAgentId(member.agentId).slice(0, 2).toUpperCase()}</span>
+                  <div>
+                    <strong>{displayAgentId(member.agentId)}</strong>
+                    <small>{member.role}</small>
+                  </div>
+                  <b>{member.runtime_flavor ?? member.runtime_target_ref ?? currentWorkCopy.activeValue}</b>
+                </div>
+              ))}
+            </div>
+          </section>
+        </aside>
+      </section>
+
+      <section id="current-work-execution-console" className="surface-panel surface-panel--workspace current-work-mgo__execution-console">
+        <div className="section-title-row">
+          <div>
+            <p className="page-kicker">{currentWorkCopy.executionConsoleLabel}</p>
+            <h3 className="section-title">{tasksPageCopy.executionTitle}</h3>
+          </div>
+          <button type="button" className="button-secondary" onClick={() => void runObserve()}>
+            {tasksPageCopy.executionObserveAction}
+          </button>
+        </div>
+
+        {activeTask ? (
+          <>
+            <TaskBlueprintSection
+              blueprint={activeBlueprint}
+              copy={tasksPageCopy}
+              currentStageId={activeStatus?.task.current_stage ?? null}
+            />
+
+            {!activeStatus && taskDetailLoading ? (
+              <p className="type-body-sm mt-4">{currentWorkCopy.taskStatusLoading}</p>
+            ) : activeSubtasks.length > 0 ? (
+              <div className="task-runtime-grid">
+                <div className="task-runtime-grid__column">
+                  <div className="task-runtime-panel">
+                    <p className="field-label">{tasksPageCopy.executionTitle}</p>
+                    <div className="dense-list mt-3">
+                      {activeSubtasks.map(renderSubtaskCard)}
                     </div>
-
-                    {!activeStatus && taskDetailLoading ? (
-                      <p className="type-body-sm mt-4">Loading live task status…</p>
-                    ) : activeSubtasks.length > 0 ? (
-                      <div className="task-runtime-grid">
-                        <div className="task-runtime-grid__column">
-                          <div className="task-runtime-panel">
-                            <p className="field-label">{tasksPageCopy.executionTitle}</p>
-                            <div className="dense-list mt-3">
-                              {activeSubtasks.map(renderSubtaskCard)}
-                            </div>
-                          </div>
-                          <div className="task-runtime-panel">
-                            <p className="field-label">{tasksPageCopy.executionListLabel}</p>
-                            {selectedSubtaskExecutions.length > 0 ? (
-                              <div className="space-y-2 mt-3">
-                                {selectedSubtaskExecutions.map(renderExecutionStatus)}
-                              </div>
-                            ) : (
-                              <p className="type-body-sm mt-3">{tasksPageCopy.executionEmpty}</p>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="task-runtime-grid__column">
-                          {selectedSubtask ? (
-                            <div className="task-runtime-panel task-runtime-panel--hero">
-                              <span className="type-mono-sm">{selectedSubtask.id}</span>
-                              <h4 className="type-heading-md mt-3">{selectedSubtask.title}</h4>
-                              <p className="type-body-sm mt-3">
-                                {displayAgentId(selectedSubtask.assignee)}
-                                {' / '}
-                                {selectedSubtask.stage_id}
-                                {' / '}
-                                {selectedSubtask.status}
-                              </p>
-                              <div className="mt-4 flex flex-wrap gap-2">
-                                {!TERMINAL_SUBTASK_STATES.has(selectedSubtask.status) ? (
-                                  <>
-                                    <button type="button" className="button-secondary" onClick={() => void runSubtaskLifecycle('close', selectedSubtask)}>
-                                      {tasksPageCopy.subtaskCloseAction}
-                                    </button>
-                                    <button type="button" className="button-secondary" onClick={() => void runSubtaskLifecycle('archive', selectedSubtask)}>
-                                      {tasksPageCopy.subtaskArchiveAction}
-                                    </button>
-                                    <button type="button" className="button-danger" onClick={() => void runSubtaskLifecycle('cancel', selectedSubtask)}>
-                                      {tasksPageCopy.subtaskCancelAction}
-                                    </button>
-                                  </>
-                                ) : null}
-                              </div>
-                            </div>
-                          ) : null}
-
-                          {selectedExecution ? (
-                            <>
-                              <div className="task-runtime-panel task-runtime-panel--hero">
-                                <span className="type-mono-sm">{selectedExecution.executionId}</span>
-                                <h4 className="type-heading-md mt-3">{selectedExecution.adapter}</h4>
-                                <p className="type-body-sm mt-3">
-                                  {selectedExecution.status}
-                                  {selectedExecution.sessionId ? ` / ${selectedExecution.sessionId}` : ''}
-                                  {selectedExecution.workdir ? ` / ${selectedExecution.workdir}` : ''}
-                                </p>
-                                <div className="flex flex-wrap gap-2 mt-4">
-                                  <button type="button" className="button-secondary" onClick={() => void runProbe(selectedExecution.executionId)}>
-                                    {tasksPageCopy.executionProbeAction}
-                                  </button>
-                                  <button type="button" className="button-secondary" onClick={() => void runExecutionTailRefresh(selectedExecution.executionId)}>
-                                    {executionTailById[selectedExecution.executionId] ? tasksPageCopy.executionTailRefreshAction : tasksPageCopy.executionTailAction}
-                                  </button>
-                                  <button type="button" className="button-danger" onClick={() => void runExecutionStop(selectedExecution.executionId)}>
-                                    {tasksPageCopy.executionStopAction}
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className="task-runtime-panel">
-                                <div className="flex items-center justify-between gap-3">
-                                  <p className="field-label">{tasksPageCopy.executionTailLabel}</p>
-                                  <div className="flex items-center gap-2">
-                                    {selectedExecutionTailMode ? <span className="status-pill status-pill--neutral">{selectedExecutionTailMode}</span> : null}
-                                    {selectedExecutionTailLoading ? <span className="type-text-xs">{tasksPageCopy.executionTailPollingLabel}…</span> : null}
-                                  </div>
-                                </div>
-                                {selectedExecutionTail?.fetchedAt ? (
-                                  <p className="type-text-xs mt-2">
-                                    {tasksPageCopy.executionTailUpdatedLabel}: {formatRelativeTimestamp(selectedExecutionTail.fetchedAt)}
-                                  </p>
-                                ) : null}
-                                <div className="task-tail-card mt-3">
-                                  <RuntimeLogViewer
-                                    output={
-                                      selectedExecutionTail
-                                        ? (
-                                            selectedExecutionTail.available
-                                              ? (selectedExecutionTail.output ?? tasksPageCopy.executionTailEmpty)
-                                              : tasksPageCopy.executionTailUnavailable
-                                          )
-                                        : tasksPageCopy.executionTailEmpty
-                                    }
-                                    loading={selectedExecutionTailLoading}
-                                  />
-                                </div>
-                              </div>
-
-                              {selectedExecution.callbackPayload?.inputRequest?.hint ? (
-                                <div className="task-runtime-panel">
-                                  <p className="type-body-sm">{selectedExecution.callbackPayload.inputRequest.hint}</p>
-                                </div>
-                              ) : null}
-
-                              {selectedExecution.callbackPayload?.inputRequest?.transport === 'text' ? (
-                                <div className="task-runtime-panel">
-                                  <label className="field-label" htmlFor="project-execution-input-text">
-                                    {tasksPageCopy.executionTextLabel}
-                                  </label>
-                                  <textarea
-                                    id="project-execution-input-text"
-                                    value={executionInputText}
-                                    onChange={(event) => setExecutionInputText(event.target.value)}
-                                    className="textarea-shell mt-3"
-                                    placeholder={selectedExecution.callbackPayload.inputRequest.textPlaceholder ?? tasksPageCopy.executionTextPlaceholder}
-                                  />
-                                  <button type="button" className="button-primary mt-3" onClick={() => void runExecutionTextInput(selectedExecution.executionId)}>
-                                    {tasksPageCopy.executionTextAction}
-                                  </button>
-                                </div>
-                              ) : null}
-
-                              {selectedExecution.callbackPayload?.inputRequest?.transport === 'choice' &&
-                              selectedExecution.callbackPayload.inputRequest.choiceOptions.length > 0 ? (
-                                <div className="task-runtime-panel">
-                                  <p className="field-label">{tasksPageCopy.executionChoiceLabel}</p>
-                                  <div className="flex flex-wrap gap-2 mt-3">
-                                    {selectedExecution.callbackPayload.inputRequest.choiceOptions.map((option) => (
-                                      <button
-                                        key={option.id}
-                                        type="button"
-                                        className="button-secondary"
-                                        onClick={() => void runExecutionKeysInput(selectedExecution.executionId, option.keys, true)}
-                                      >
-                                        {option.label}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              ) : null}
-
-                              {selectedExecution.callbackPayload?.inputRequest?.transport === 'keys' &&
-                              selectedExecution.callbackPayload.inputRequest.keys.length > 0 ? (
-                                <div className="task-runtime-panel">
-                                  <p className="field-label">{tasksPageCopy.executionKeysLabel}</p>
-                                  <div className="flex flex-wrap gap-2 mt-3">
-                                    {selectedExecution.callbackPayload.inputRequest.keys.map((key) => (
-                                      <button
-                                        key={key}
-                                        type="button"
-                                        className="button-secondary"
-                                        onClick={() => void runExecutionKeysInput(selectedExecution.executionId, [key])}
-                                      >
-                                        {key}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              ) : null}
-                            </>
-                          ) : null}
-                        </div>
+                  </div>
+                  <div className="task-runtime-panel">
+                    <p className="field-label">{tasksPageCopy.executionListLabel}</p>
+                    {selectedSubtaskExecutions.length > 0 ? (
+                      <div className="space-y-2 mt-3">
+                        {selectedSubtaskExecutions.map(renderExecutionStatus)}
                       </div>
                     ) : (
-                      <p className="type-body-sm mt-4">{tasksPageCopy.executionEmpty}</p>
+                      <p className="type-body-sm mt-3">{tasksPageCopy.executionEmpty}</p>
                     )}
                   </div>
                 </div>
-              ) : (
-                <div className="empty-state">
-                  <p className="type-heading-sm">{tasksPageCopy.emptyTitle}</p>
-                  <p className="type-body-sm mt-2">{tasksPageCopy.emptySummary}</p>
-                </div>
-              )}
-        </section>
 
-        <aside className="workbench-pane workbench-pane--inspector task-pane task-pane--ops">
-              {activeTask ? (
-                <div className="task-ops__stack">
-                  <div className="task-authority__section task-ops__section">
-                    <h4 className="section-title">{tasksPageCopy.governanceTitle}</h4>
-                    <div className="task-authority__facts mt-4">
-                      <div className="detail-card">
-                        <PanelRightOpen size={16} className="detail-card__icon" />
-                        <span className="detail-card__label">{tasksPageCopy.governanceActiveLabel}</span>
-                        <strong className="detail-card__value">{activeGovernanceSnapshot?.activeExecutions ?? 0}</strong>
-                      </div>
-                      <div className="detail-card">
-                        <PanelRightOpen size={16} className="detail-card__icon" />
-                        <span className="detail-card__label">{tasksPageCopy.governancePerAgentLabel}</span>
-                        <strong className="detail-card__value">
-                          {activeGovernanceSnapshot?.limits.maxConcurrentPerAgent ?? tasksPageCopy.stageFallback}
-                        </strong>
-                      </div>
-                      <div className="detail-card">
-                        <Clock3 size={16} className="detail-card__icon" />
-                        <span className="detail-card__label">{tasksPageCopy.governanceMemoryLabel}</span>
-                        <strong className="detail-card__value">
-                          {formatGovernanceMemoryValue(activeStatus, tasksPageCopy.stageFallback)}
-                        </strong>
-                      </div>
-                      <div className="detail-card">
-                        <Clock3 size={16} className="detail-card__icon" />
-                        <span className="detail-card__label">{tasksPageCopy.governanceLoadLabel}</span>
-                        <strong className="detail-card__value">
-                          {activeGovernanceSnapshot?.host?.load1m != null
-                            ? activeGovernanceSnapshot.host.load1m.toFixed(2)
-                            : tasksPageCopy.stageFallback}
-                        </strong>
-                      </div>
-                    </div>
-
-                    {activeGovernanceSnapshot?.activeByAssignee.length ? (
-                      <div className="space-y-2 mt-4">
-                        <p className="field-label">{tasksPageCopy.governanceAssigneeLabel}</p>
-                        <div className="space-y-2">
-                          {activeGovernanceSnapshot.activeByAssignee.map((item) => (
-                            <div key={item.assignee} className="data-row">
-                              <span className="type-mono-xs">{displayAgentId(item.assignee)}</span>
-                              <span className="status-pill status-pill--neutral">{item.count}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {(activeGovernanceSnapshot?.warnings ?? []).length ? (
-                      <div className="space-y-2 mt-4">
-                        <p className="field-label">{tasksPageCopy.governanceWarningsLabel}</p>
-                        <div className="space-y-2">
-                          {(activeGovernanceSnapshot?.warnings ?? []).map((warning) => (
-                            <div key={warning} className="data-row">
-                              <span className="type-body-sm">{warning}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {(activeGovernanceSnapshot?.activeExecutionDetails ?? []).length ? (
-                      <div className="space-y-2 mt-4">
-                        <p className="field-label">{tasksPageCopy.governanceExecutionDetailsLabel}</p>
-                        <div className="space-y-2">
-                          {(activeGovernanceSnapshot?.activeExecutionDetails ?? []).map((detail) => (
-                            <div key={detail.executionId} className="data-row">
-                              <div className="min-w-0 flex-1">
-                                <p className="type-mono-xs">{detail.executionId}</p>
-                                <p className="type-text-xs mt-1">
-                                  {displayAgentId(detail.assignee)}
-                                  {' / '}
-                                  {detail.adapter}
-                                  {' / '}
-                                  {detail.status}
-                                </p>
-                              </div>
-                              <span className="status-pill status-pill--neutral">{detail.subtaskId}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="task-authority__section task-ops__section">
-                    <h4 className="section-title">{tasksPageCopy.actionsTitle}</h4>
-                    <div>
-                      <span className="field-label">{tasksPageCopy.actorLabel}</span>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {activeMembers.map((member) => (
-                          <button
-                            key={`${member.role}-${member.agentId}`}
-                            type="button"
-                            onClick={() => setActionActor(member.agentId)}
-                            className={resolvedActionActor === member.agentId ? 'choice-pill choice-pill--active' : 'choice-pill'}
-                          >
-                            {displayAgentId(member.agentId)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="field-label" htmlFor="project-task-action-note">
-                        {tasksPageCopy.noteLabel}
-                      </label>
-                      <textarea
-                        id="project-task-action-note"
-                        value={actionNote}
-                        onChange={(event) => setActionNote(event.target.value)}
-                        className="textarea-shell"
-                        placeholder={tasksPageCopy.notePlaceholder}
-                      />
-                    </div>
-
-                    <div className="task-authority__actions">
-                      {selectedSubtask ? (
-                        <>
-                          <button type="button" className="button-secondary" onClick={() => void runRuntimeDiagnosis(selectedSubtask.assignee)}>
-                            {tasksPageCopy.runtimeDiagnosisAction}
-                          </button>
-                          <button type="button" className="button-secondary" onClick={() => void runRuntimeRestart(selectedSubtask.assignee)}>
-                            {tasksPageCopy.runtimeRestartAction}
-                          </button>
-                        </>
-                      ) : null}
-
-                      {canRunApprovalActions ? (
-                        <>
-                          <button type="button" className="button-primary" onClick={() => void runAction('approve')}>
-                            {tasksPageCopy.approveAction}
-                          </button>
-                          <button type="button" className="button-danger" onClick={() => void runAction('reject')}>
-                            {tasksPageCopy.rejectAction}
-                          </button>
-                        </>
-                      ) : null}
-
-                      {canRunGateActions && activeGateType === 'quorum' ? (
-                        <>
-                          <button type="button" className="button-primary" onClick={() => void runAction('confirm', { vote: 'approve' })}>
-                            {tasksPageCopy.confirmApproveAction}
-                          </button>
-                          <button type="button" className="button-danger" onClick={() => void runAction('confirm', { vote: 'reject' })}>
-                            {tasksPageCopy.confirmRejectAction}
-                          </button>
-                        </>
-                      ) : null}
-
-                      {activeTask.sourceState === 'active' ? (
-                        <>
-                          <button type="button" className="button-secondary" onClick={() => void runAction('advance')}>
-                            {tasksPageCopy.advanceAction}
-                          </button>
-                          <button type="button" className="button-secondary" onClick={() => void runAction('pause')}>
-                            {tasksPageCopy.pauseAction}
-                          </button>
-                          <button type="button" className="button-danger" onClick={() => void runAction('cancel')}>
-                            {tasksPageCopy.cancelAction}
-                          </button>
-                          <button type="button" className="button-secondary" onClick={() => void runAction('force_advance')}>
-                            {tasksPageCopy.forceAdvanceAction}
-                          </button>
-                        </>
-                      ) : null}
-
-                      {activeTask.sourceState === 'paused' ? (
-                        <button type="button" className="button-primary" onClick={() => void runAction('resume')}>
-                          {tasksPageCopy.resumeAction}
+                <div className="task-runtime-grid__column">
+                  {selectedSubtask ? (
+                    <div className="task-runtime-panel task-runtime-panel--hero">
+                      <span className="type-mono-sm">{selectedSubtask.id}</span>
+                      <h4 className="type-heading-md mt-3">{selectedSubtask.title}</h4>
+                      <p className="type-body-sm mt-3">
+                        {displayAgentId(selectedSubtask.assignee)}
+                        {' / '}
+                        {selectedSubtask.stage_id}
+                        {' / '}
+                        {selectedSubtask.status}
+                      </p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button type="button" className="button-secondary" onClick={() => void runRuntimeDiagnosis(selectedSubtask.assignee)}>
+                          {tasksPageCopy.runtimeDiagnosisAction}
                         </button>
-                      ) : null}
-
-                      {activeTask.sourceState === 'blocked' ? (
-                        <button type="button" className="button-primary" onClick={() => void runAction('unblock')}>
-                          {tasksPageCopy.unblockAction}
+                        <button type="button" className="button-secondary" onClick={() => void runRuntimeRestart(selectedSubtask.assignee)}>
+                          {tasksPageCopy.runtimeRestartAction}
                         </button>
-                      ) : null}
-                    </div>
-
-                    {(activeStatus?.subtasks ?? []).some((subtask) => subtask.status !== 'done') ? (
-                      <div className="flex flex-wrap gap-2">
-                        {(activeStatus?.subtasks ?? [])
-                          .filter((subtask) => subtask.status !== 'done')
-                          .map((subtask) => (
-                            <button
-                              key={subtask.id}
-                              type="button"
-                              className="button-secondary"
-                              onClick={() =>
-                                void runAction('subtask_done', {
-                                  subtaskId: subtask.id,
-                                  actorId: subtask.assignee,
-                                  note: actionNote || t('common.done'),
-                                })
-                              }
-                            >
-                              {t('common.markSubtaskDone', { id: subtask.id })}
+                        {!TERMINAL_SUBTASK_STATES.has(selectedSubtask.status) ? (
+                          <>
+                            <button type="button" className="button-secondary" onClick={() => void runSubtaskLifecycle('close', selectedSubtask)}>
+                              {tasksPageCopy.subtaskCloseAction}
                             </button>
-                          ))}
+                            <button type="button" className="button-secondary" onClick={() => void runSubtaskLifecycle('archive', selectedSubtask)}>
+                              {tasksPageCopy.subtaskArchiveAction}
+                            </button>
+                            <button type="button" className="button-danger" onClick={() => void runSubtaskLifecycle('cancel', selectedSubtask)}>
+                              {tasksPageCopy.subtaskCancelAction}
+                            </button>
+                          </>
+                        ) : null}
                       </div>
-                    ) : null}
-                  </div>
+                    </div>
+                  ) : null}
 
-                  <div className="task-authority__section task-authority__section--meta task-ops__section">
-                    <h4 className="section-title">{tasksPageCopy.timelineTitle}</h4>
-                    <div className="mt-4 space-y-3">
-                      {activeTimeline.length > 0 ? activeTimeline.slice(0, 4).map((entry) => (
-                        <div key={entry.key} className="timeline-item">
-                          <div className="timeline-item__rail" />
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="type-label-sm">{entry.label}</span>
-                              <span className="type-text-xs">{formatRelativeTimestamp(entry.timestamp)}</span>
-                            </div>
-                            <p className="type-body-sm mt-2">
-                              {entry.detail || tasksPageCopy.timelineEmptyDetail}
-                            </p>
+                  {selectedExecution ? (
+                    <>
+                      <div className="task-runtime-panel task-runtime-panel--hero">
+                        <span className="type-mono-sm">{selectedExecution.executionId}</span>
+                        <h4 className="type-heading-md mt-3">{selectedExecution.adapter}</h4>
+                        <p className="type-body-sm mt-3">
+                          {selectedExecution.status}
+                          {selectedExecution.sessionId ? ` / ${selectedExecution.sessionId}` : ''}
+                          {selectedExecution.workdir ? ` / ${selectedExecution.workdir}` : ''}
+                        </p>
+                        <div className="flex flex-wrap gap-2 mt-4">
+                          <button type="button" className="button-secondary" onClick={() => void runProbe(selectedExecution.executionId)}>
+                            {tasksPageCopy.executionProbeAction}
+                          </button>
+                          <button type="button" className="button-secondary" onClick={() => void runExecutionTailRefresh(selectedExecution.executionId)}>
+                            {executionTailById[selectedExecution.executionId] ? tasksPageCopy.executionTailRefreshAction : tasksPageCopy.executionTailAction}
+                          </button>
+                          <button type="button" className="button-danger" onClick={() => void runExecutionStop(selectedExecution.executionId)}>
+                            {tasksPageCopy.executionStopAction}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="task-runtime-panel">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="field-label">{tasksPageCopy.executionTailLabel}</p>
+                          <div className="flex items-center gap-2">
+                            {selectedExecutionTailMode ? <span className="status-pill status-pill--neutral">{selectedExecutionTailMode}</span> : null}
+                            {selectedExecutionTailLoading ? <span className="type-text-xs">{tasksPageCopy.executionTailPollingLabel}...</span> : null}
                           </div>
                         </div>
-                      )) : (
-                        <p className="type-body-sm">{tasksPageCopy.timelineEmptyDetail}</p>
-                      )}
-                    </div>
+                        {selectedExecutionTail?.fetchedAt ? (
+                          <p className="type-text-xs mt-2">
+                            {tasksPageCopy.executionTailUpdatedLabel}: {formatRelativeTimestamp(selectedExecutionTail.fetchedAt)}
+                          </p>
+                        ) : null}
+                        <div className="task-tail-card mt-3">
+                          <RuntimeLogViewer
+                            output={
+                              selectedExecutionTail
+                                ? (
+                                    selectedExecutionTail.available
+                                      ? (selectedExecutionTail.output ?? tasksPageCopy.executionTailEmpty)
+                                      : tasksPageCopy.executionTailUnavailable
+                                  )
+                                : tasksPageCopy.executionTailEmpty
+                            }
+                            loading={selectedExecutionTailLoading}
+                          />
+                        </div>
+                      </div>
 
-                    <button
-                      type="button"
-                      className="button-primary w-full justify-center"
-                      onClick={() => navigate(buildProjectTaskHref(activeTask.id, projectId))}
-                    >
-                      <ArrowRight size={16} />
-                      {tasksPageCopy.detailAction}
-                    </button>
-                  </div>
+                      {selectedExecution.callbackPayload?.inputRequest?.hint ? (
+                        <div className="task-runtime-panel">
+                          <p className="type-body-sm">{selectedExecution.callbackPayload.inputRequest.hint}</p>
+                        </div>
+                      ) : null}
+
+                      {selectedExecution.callbackPayload?.inputRequest?.transport === 'text' ? (
+                        <div className="task-runtime-panel">
+                          <label className="field-label" htmlFor="project-execution-input-text">
+                            {tasksPageCopy.executionTextLabel}
+                          </label>
+                          <textarea
+                            id="project-execution-input-text"
+                            value={executionInputText}
+                            onChange={(event) => setExecutionInputText(event.target.value)}
+                            className="textarea-shell mt-3"
+                            placeholder={selectedExecution.callbackPayload.inputRequest.textPlaceholder ?? tasksPageCopy.executionTextPlaceholder}
+                          />
+                          <button type="button" className="button-primary mt-3" onClick={() => void runExecutionTextInput(selectedExecution.executionId)}>
+                            {tasksPageCopy.executionTextAction}
+                          </button>
+                        </div>
+                      ) : null}
+
+                      {selectedExecution.callbackPayload?.inputRequest?.transport === 'choice' &&
+                      selectedExecution.callbackPayload.inputRequest.choiceOptions.length > 0 ? (
+                        <div className="task-runtime-panel">
+                          <p className="field-label">{tasksPageCopy.executionChoiceLabel}</p>
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {selectedExecution.callbackPayload.inputRequest.choiceOptions.map((option) => (
+                              <button
+                                key={option.id}
+                                type="button"
+                                className="button-secondary"
+                                onClick={() => void runExecutionKeysInput(selectedExecution.executionId, option.keys, true)}
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {selectedExecution.callbackPayload?.inputRequest?.transport === 'keys' &&
+                      selectedExecution.callbackPayload.inputRequest.keys.length > 0 ? (
+                        <div className="task-runtime-panel">
+                          <p className="field-label">{tasksPageCopy.executionKeysLabel}</p>
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {selectedExecution.callbackPayload.inputRequest.keys.map((key) => (
+                              <button
+                                key={key}
+                                type="button"
+                                className="button-secondary"
+                                onClick={() => void runExecutionKeysInput(selectedExecution.executionId, [key])}
+                              >
+                                {key}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
                 </div>
-              ) : (
-                <div className="empty-state">
-                  <p className="type-heading-sm">{tasksPageCopy.emptyTitle}</p>
-                  <p className="type-body-sm mt-2">{tasksPageCopy.emptySummary}</p>
-                </div>
-              )}
-        </aside>
-      </div>
+              </div>
+            ) : (
+              <p className="type-body-sm mt-4">{tasksPageCopy.executionEmpty}</p>
+            )}
+          </>
+        ) : null}
+      </section>
     </div>
   );
 }

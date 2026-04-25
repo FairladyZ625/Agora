@@ -346,17 +346,21 @@ describe('dashboard phase 2 routes', () => {
       </MemoryRouter>,
     );
 
-    const workspaceNavigation = screen.getByRole('navigation', { name: 'Project workspace' });
+    const workspaceNavigation = screen.getByRole('navigation', { name: '项目工作区导航' });
     expect(within(workspaceNavigation).getByRole('link', { name: 'Overview' })).toBeInTheDocument();
     expect(within(workspaceNavigation).getByRole('link', { name: 'Current Work' })).toBeInTheDocument();
     expect(within(workspaceNavigation).getByRole('link', { name: 'Context' })).toBeInTheDocument();
     expect(within(workspaceNavigation).getByRole('link', { name: 'Knowledge' })).toHaveAttribute('href', '/projects/proj-alpha/knowledge');
+    expect(within(workspaceNavigation).getByRole('link', { name: 'Participants' })).toHaveAttribute('href', '/projects/proj-alpha/participants');
+    expect(within(workspaceNavigation).getByRole('link', { name: 'Governance' })).toHaveAttribute('href', '/projects/proj-alpha/governance');
     expect(within(workspaceNavigation).getByRole('link', { name: 'Archive' })).toHaveAttribute('href', '/projects/proj-alpha/archive');
     expect(within(workspaceNavigation).getByRole('link', { name: 'Operator' })).toHaveAttribute('href', '/projects/proj-alpha/operator');
   });
 
   it.each([
     ['/projects/proj-alpha/knowledge', 'project-knowledge-page-panel'],
+    ['/projects/proj-alpha/participants', 'project-participants-page-panel'],
+    ['/projects/proj-alpha/governance', 'project-governance-page-panel'],
     ['/projects/proj-alpha/archive', 'project-archive-page-panel'],
     ['/projects/proj-alpha/operator', 'project-nomos-panel'],
   ])('renders %s inside the project workspace shell', (entry, testId) => {
@@ -366,7 +370,7 @@ describe('dashboard phase 2 routes', () => {
       </MemoryRouter>,
     );
 
-    const workspaceNavigation = screen.getByRole('navigation', { name: 'Project workspace' });
+    const workspaceNavigation = screen.getByRole('navigation', { name: '项目工作区导航' });
     expect(within(workspaceNavigation).getByRole('link', { name: 'Overview' })).toBeInTheDocument();
     expect(screen.getByTestId(testId)).toBeInTheDocument();
   });

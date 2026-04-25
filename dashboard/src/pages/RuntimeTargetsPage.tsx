@@ -129,8 +129,8 @@ export function RuntimeTargetsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <section className="surface-panel surface-panel--workspace" data-testid="runtime-targets-masthead">
+    <div className="interior-page">
+      <section className="surface-panel surface-panel--workspace surface-panel--context-anchor" data-testid="runtime-targets-masthead">
         <div className="workbench-masthead">
           <div>
             <p className="page-kicker">{copy.kicker}</p>

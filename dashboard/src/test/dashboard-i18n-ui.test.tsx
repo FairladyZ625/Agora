@@ -246,11 +246,12 @@ describe('dashboard English UI', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /home/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Task Board' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Refresh workspace' })).toBeInTheDocument();
     expect(screen.getAllByText('Agora').length).toBeGreaterThan(0);
-    expect(screen.getByText('System clock')).toBeInTheDocument();
+    expect(screen.queryByText('System clock')).not.toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Global navigation' })).toBeInTheDocument();
   });
 
   it('renders English create task copy while preserving task data as-is', () => {
@@ -290,7 +291,7 @@ describe('dashboard English UI', () => {
     expect(screen.getByRole('heading', { name: 'Project surfaces' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Current work' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Operator' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Operator 1 citizens and Nomos controls moved into the operator workspace\./ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Operator surface 1 citizens and Nomos controls moved into the operator workspace\./ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Review Draft' })).not.toBeInTheDocument();
     expect(screen.getByText('In progress')).toBeInTheDocument();
     expect(screen.getByText('Pending')).toBeInTheDocument();

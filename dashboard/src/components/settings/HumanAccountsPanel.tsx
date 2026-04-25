@@ -156,7 +156,7 @@ export function HumanAccountsPanel({
   };
 
   return (
-    <section className="surface-panel surface-panel--workspace">
+    <section className="surface-panel surface-panel--workspace settings-mgo__accounts" data-testid="settings-accounts-panel">
       <div className="section-title-row">
         <div>
           <p className="page-kicker">{settingsPageCopy.accessKicker}</p>

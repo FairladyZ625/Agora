@@ -4,9 +4,9 @@
   width: 100%;
   overflow: clip;
   box-shadow: var(--topbar-shell-shadow);
-  border: 1px solid var(--color-border);
-  background: var(--surface-glass-authority);
-  backdrop-filter: blur(10px);
+  border: 1px solid var(--surface-workspace-border);
+  background: var(--surface-context-anchor-bg);
+  backdrop-filter: var(--sidebar-backdrop);
   isolation: isolate;
 }
 
@@ -14,9 +14,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  width: 44px;
-  height: 44px;
+  min-width: 34px;
+  width: 34px;
+  height: 34px;
   border: 1px solid var(--color-border);
   background: transparent;
   color: var(--color-text-secondary);
@@ -39,7 +39,16 @@
   border: 1px solid var(--sidebar-shell-border);
   background: var(--sidebar-shell-bg);
   box-shadow: var(--sidebar-shell-shadow);
+  backdrop-filter: var(--sidebar-backdrop);
   isolation: isolate;
+}
+
+.app-sidebar__mobile-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  border: 0;
+  background: var(--mobile-backdrop-bg);
 }
 
 .sidebar-telemetry-seam {
@@ -124,7 +133,7 @@
 }
 
 .nav-link:hover {
-  background: var(--color-bg-subtle);
+  background: var(--project-tab-bg);
   color: var(--color-text-primary);
   transform: translateX(1px);
 }
@@ -169,14 +178,17 @@
 
 .sidebar-brand-shell {
   gap: 14px;
+  border-color: var(--sidebar-shell-border);
+  background: var(--project-tab-bg);
 }
 
 .sidebar-brand-title {
   font-family: var(--font-brand);
-  font-size: 28px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--color-text-primary);
 }
 
 .sidebar-brand-panel {
@@ -220,7 +232,7 @@
 
 .sidebar-toggle-button:hover {
   color: var(--color-text-primary);
-  background: var(--color-bg-subtle);
+  background: var(--project-tab-bg);
 }
 
 @keyframes sidebar-seam-flow {
@@ -317,4 +329,18 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--color-text-tertiary);
+}
+
+.field-input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--surface-workspace-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  box-shadow: var(--field-inset-shadow);
+  padding: 0 14px;
+}
+
+.field-input:focus {
+  border-color: var(--project-tab-active-border);
 }

@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Gauge, Languages, LogOut, Menu, Monitor, Moon, RefreshCw, Sun, UserRound } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router';
+import { NavLink, useLocation, useNavigate } from 'react-router';
 import { useShellCopy } from '@/lib/dashboardCopy';
 import { useLocale } from '@/lib/i18n';
 import { useMotionStore } from '@/stores/motionStore';
@@ -15,28 +15,25 @@ import { useSessionStore } from '@/stores/sessionStore';
 const themeCycle: ThemeMode[] = ['light', 'dark', 'system'];
 const themeIcons = { light: Sun, dark: Moon, system: Monitor };
 
-function formatClockValue() {
-  return `${new Date().toISOString().slice(11, 19)} UTC`;
+function isShellNavItemActive(key: string, to: string, pathname: string, isActive: boolean) {
+  if (key === 'projects') {
+    return pathname === '/projects' || pathname.startsWith('/projects/');
+  }
+
+  if (key === 'reviews') {
+    return pathname === '/reviews' || pathname.startsWith('/reviews/');
+  }
+
+  if (key === 'participants') {
+    return pathname === '/participants' || pathname === '/agents';
+  }
+
+  if (key === 'system') {
+    return pathname === '/system' || pathname === '/runtime-targets' || pathname === '/bridges' || pathname === '/templates' || pathname.startsWith('/templates/');
+  }
+
+  return isActive || pathname === to;
 }
-
-const TopbarClock = React.memo(function TopbarClock({ label }: { label: string }) {
-  const [clock, setClock] = useState(() => formatClockValue());
-
-  useEffect(() => {
-    const timerId = window.setInterval(() => {
-      setClock(formatClockValue());
-    }, 1000);
-
-    return () => window.clearInterval(timerId);
-  }, []);
-
-  return (
-    <div className="topbar-clock-inline">
-      <span className="topbar-clock-label">{label}</span>
-      <span className="topbar-clock-value">{clock}</span>
-    </div>
-  );
-});
 
 function IconButton({
   onClick,
@@ -47,7 +44,7 @@ function IconButton({
 }: {
   onClick: () => void | Promise<void>;
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
   spinning?: boolean;
   compact?: boolean;
 }) {
@@ -73,6 +70,7 @@ export function TopNav({
   const { t } = useTranslation();
   const { locale, setLocale } = useLocale();
   const shellCopy = useShellCopy();
+  const location = useLocation();
   const motionMode = useMotionStore((state) => state.mode);
   const setMotionMode = useMotionStore((state) => state.setMode);
   const { mode, setMode } = useThemeStore();
@@ -93,10 +91,6 @@ export function TopNav({
   const motionLabels = {
     full: t('common.motionModes.full'),
     lite: t('common.motionModes.lite'),
-  };
-  const motionShortLabels = {
-    full: t('common.motionShort.full'),
-    lite: t('common.motionShort.lite'),
   };
 
   const nextTheme = () => {
@@ -123,6 +117,7 @@ export function TopNav({
 
   const nextMotion = motionMode === 'full' ? 'lite' : 'full';
   const motionToggleLabel = t('common.motionToggleAction', { label: motionLabels[nextMotion] });
+  const themeToggleLabel = `${t('login.themeAction')} (${themeLabels[mode]})`;
 
   const toggleMotionMode = () => {
     setMotionMode(nextMotion);
@@ -137,13 +132,6 @@ export function TopNav({
 
   const activeCount = tasks.filter((task) => task.state === 'in_progress').length;
   const reviewCount = tasks.filter((task) => task.state === 'gate_waiting').length;
-  const queueStatusLabel = reviewCount > 0 ? t('common.reviewWaitingCount', { count: reviewCount }) : t('common.systemOnline');
-  const runtimeStatusLabel = error
-    ? t('common.apiError')
-    : activeCount > 0
-      ? t('common.orchestratingCount', { count: activeCount })
-      : t('common.queueStable');
-
   const refreshWorkspace = async () => {
     const source = await fetchTasks();
     const latestError = useTaskStore.getState().error;
@@ -167,19 +155,20 @@ export function TopNav({
   };
 
   return (
-    <header className="app-topbar sticky top-0 z-20" style={{ background: 'var(--color-panel-strong)' }}>
+    <header className="app-topbar sticky top-0 z-20">
       {!isMobile ? (
         <div className="app-topbar__intelligence-layer" data-testid="topbar-intelligence-layer" aria-hidden="true">
           <IntelligenceCanvas
             activeCount={activeCount}
             reviewCount={reviewCount}
             hasError={!!error}
-            className="topbar-intelligence--bar"
+            animated={motionMode === 'full'}
+            className="topbar-intelligence--bar topbar-intelligence--ambient"
             testId="topbar-intelligence-bar"
           />
         </div>
       ) : null}
-      <div className={isMobile ? 'app-frame app-topbar__frame app-topbar__frame--mobile px-4 py-4 md:px-6' : 'app-frame app-topbar__frame px-4 py-4 md:px-6'}>
+      <div className={isMobile ? 'app-frame app-topbar__frame app-topbar__frame--mobile px-3 py-3 md:px-5' : 'app-frame app-topbar__frame px-3 py-2 md:px-5'}>
         <div className="app-topbar__cluster app-topbar__cluster--brand">
           {isMobile ? (
             <>
@@ -191,74 +180,69 @@ export function TopNav({
                 <div className="topbar-system-name">{shellCopy.brandSystemName}</div>
               </div>
             </>
-          ) : null}
+          ) : (
+            <>
+              <BrandLogo className="topbar-brand-mark" />
+              <div className="topbar-brand-copy topbar-brand-copy--desktop">
+                <div className="topbar-system-name">{shellCopy.brandSystemName}</div>
+              </div>
+            </>
+          )}
         </div>
+
+        {!isMobile ? (
+          <nav aria-label="Global navigation" className="topbar-nav">
+            {shellCopy.navItems.map(({ to, key, label, hint }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={to === '/'}
+                className={({ isActive }) => (
+                  isShellNavItemActive(key, to, location.pathname, isActive)
+                    ? 'topbar-nav__link topbar-nav__link--active'
+                    : 'topbar-nav__link'
+                )}
+              >
+                <span className="topbar-nav__label">{label}</span>
+                <span className="topbar-nav__hint">{hint}</span>
+              </NavLink>
+            ))}
+          </nav>
+        ) : null}
 
         <div className="app-topbar__cluster app-topbar__cluster--controls">
           {isMobile ? (
-            <div className="topbar-ops__stack">
-              <div className="topbar-ops__row topbar-ops__row--mobile">
-                <span className="topbar-chip topbar-chip--status">
-                  <span className="status-dot status-dot--success" />
-                  {queueStatusLabel}
+            <div className="topbar-ops__row topbar-ops__row--mobile">
+              <div className="topbar-user-chip topbar-user-chip--compact">
+                <span className="topbar-user-chip__identity">
+                  <UserRound size={14} />
+                  <span className="topbar-user-chip__name">{username ?? 'unknown'}</span>
                 </span>
-
-                <div className="topbar-actions-group topbar-actions-group--mobile">
-                  <IconButton onClick={refreshWorkspace} label={t('common.refreshWorkspace')} spinning={loading}>
-                    <RefreshCw size={16} />
-                  </IconButton>
-                  <IconButton onClick={() => void toggleLocale()} label={t('common.switchLanguage')}>
-                    <Languages size={16} />
-                  </IconButton>
-                  <IconButton onClick={toggleMotionMode} label={motionToggleLabel}>
-                    <Gauge size={16} />
-                  </IconButton>
-                  <IconButton onClick={nextTheme} label={themeLabels[mode]}>
-                    <ThemeIcon size={16} />
-                  </IconButton>
-                  <IconButton onClick={() => void handleLogout()} label={t('common.logout')}>
-                    <LogOut size={16} />
-                  </IconButton>
-                </div>
               </div>
 
-              <div className="topbar-ops__row topbar-ops__row--mobile topbar-ops__row--mobile-secondary">
-                <span className="topbar-chip">
-                  <span className="status-dot status-dot--info" />
-                  {runtimeStatusLabel}
-                </span>
-
-                <div className="topbar-user-chip topbar-user-chip--compact">
-                  <span className="topbar-user-chip__identity">
-                    <UserRound size={14} />
-                    <span className="topbar-user-chip__name">{username ?? 'unknown'}</span>
-                    <span className="topbar-user-chip__role">{role ?? 'member'}</span>
-                  </span>
-                </div>
+              <div className="topbar-actions-group topbar-actions-group--mobile">
+                <IconButton onClick={refreshWorkspace} label={t('common.refreshWorkspace')} spinning={loading}>
+                  <RefreshCw size={16} />
+                </IconButton>
+                <IconButton
+                  onClick={() => void toggleLocale()}
+                  label={`${t('common.switchLanguage')} (${locale === 'zh-CN' ? t('common.localeName.zh') : t('common.localeName.en')})`}
+                >
+                  <Languages size={16} />
+                </IconButton>
+                <IconButton onClick={() => void handleLogout()} label={t('common.logout')}>
+                  <LogOut size={16} />
+                </IconButton>
               </div>
             </div>
           ) : (
             <div className="topbar-ops__row">
-              <span className="topbar-chip topbar-chip--status">
-                <span className="status-dot status-dot--success" />
-                {queueStatusLabel}
-              </span>
-              <div className="topbar-status hidden md:flex" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-subtle)' }}>
-                <span className="status-dot status-dot--info" />
-                {runtimeStatusLabel}
-              </div>
-              <TopbarClock label={shellCopy.systemClockLabel} />
-
               <div className="topbar-user-chip">
                 <span className="topbar-user-chip__identity">
                   <UserRound size={14} />
                   <span className="topbar-user-chip__name">{username ?? 'unknown'}</span>
                   <span className="topbar-user-chip__role">{role ?? 'member'}</span>
                 </span>
-                <button type="button" className="topbar-user-chip__action" onClick={() => void handleLogout()}>
-                  <LogOut size={14} />
-                  <span>{t('common.logout')}</span>
-                </button>
               </div>
 
               <div className="topbar-actions-group">
@@ -266,21 +250,21 @@ export function TopNav({
                   <RefreshCw size={16} />
                 </IconButton>
                 <div className="topbar-separator" />
-                <IconButton onClick={() => void toggleLocale()} label={t('common.switchLanguage')} compact={false}>
-                  <span className="flex items-center gap-1">
-                    <Languages size={16} />
-                    <span className="type-label-sm">{locale === 'zh-CN' ? t('common.localeShort.zh') : t('common.localeShort.en')}</span>
-                  </span>
+                <IconButton
+                  onClick={() => void toggleLocale()}
+                  label={`${t('common.switchLanguage')} (${locale === 'zh-CN' ? t('common.localeName.zh') : t('common.localeName.en')})`}
+                >
+                  <Languages size={16} />
+                </IconButton>
+                <IconButton onClick={toggleMotionMode} label={motionToggleLabel}>
+                  <Gauge size={16} />
+                </IconButton>
+                <IconButton onClick={nextTheme} label={themeToggleLabel}>
+                  <ThemeIcon size={16} />
                 </IconButton>
                 <div className="topbar-separator" />
-                <IconButton onClick={toggleMotionMode} label={motionToggleLabel} compact={false}>
-                  <span className="flex items-center gap-1">
-                    <Gauge size={16} />
-                    <span className="type-label-sm">{motionShortLabels[motionMode]}</span>
-                  </span>
-                </IconButton>
-                <IconButton onClick={nextTheme} label={themeLabels[mode]}>
-                  <ThemeIcon size={16} />
+                <IconButton onClick={() => void handleLogout()} label={t('common.logout')}>
+                  <LogOut size={16} />
                 </IconButton>
               </div>
             </div>

@@ -22,14 +22,19 @@ export function AppShell({ children }: AppShellProps) {
   const isMobile = useMediaQuery('(max-width: 767px)');
   const shellCopy = useShellCopy();
   const pageTitle = usePageTitle();
-  const shouldRenderSidebar = !isMobile || mobileNavOpen;
+  const shouldRenderSidebar = isMobile && mobileNavOpen;
 
   return (
     <div className="app-shell app-shell-tone">
+      <div className="app-shell__ambient" aria-hidden="true">
+        <span className="app-shell__ambient-glow app-shell__ambient-glow--primary" />
+        <span className="app-shell__ambient-glow app-shell__ambient-glow--secondary" />
+        <span className="app-shell__ambient-ridge" />
+      </div>
       {/* M4: skip-to-content link */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-white focus:text-black focus:rounded"
+        className="skip-to-content sr-only focus:not-sr-only"
       >
         Skip to content
       </a>
@@ -51,15 +56,12 @@ export function AppShell({ children }: AppShellProps) {
         <main id="main-content" className="flex-1 overflow-hidden">
           {/* C1: visually-hidden h1 for screen readers */}
           <h1 className="sr-only">{pageTitle}</h1>
-          <div className="app-frame app-frame--page px-4 py-6 md:px-6">
+          <div className="app-frame app-frame--page px-3 py-4 md:px-5">
             {children}
           </div>
         </main>
 
-        <footer
-          className="app-shell__footer border-t"
-          style={{ borderColor: 'var(--color-border)', background: 'var(--color-panel-strong)' }}
-        >
+        <footer className="app-shell__footer border-t">
           <div className="app-frame app-shell__footer-inner px-4 py-3 md:px-6">
             <div className="footer-plaque">
               <span className="footer-plaque__label">{shellCopy.footerProjectLabel}</span>

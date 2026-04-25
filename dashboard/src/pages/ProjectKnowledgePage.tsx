@@ -16,7 +16,7 @@ export function ProjectKnowledgePage() {
 
   if (detailLoading) {
     return (
-      <div className="surface-panel surface-panel--workspace">
+      <div className="surface-panel surface-panel--workspace surface-panel--context-anchor">
         <p className="type-body-sm">{copy.loadingTitle}</p>
       </div>
     );
@@ -33,8 +33,8 @@ export function ProjectKnowledgePage() {
   const { project, surfaces, work } = selectedProject;
 
   return (
-    <div className="space-y-6">
-      <section className="surface-panel surface-panel--workspace">
+    <div className="interior-page">
+      <section className="surface-panel surface-panel--workspace surface-panel--context-anchor">
         <div className="workbench-masthead">
           <div>
             <p className="page-kicker">{copy.kicker}</p>

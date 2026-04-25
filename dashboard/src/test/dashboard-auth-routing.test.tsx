@@ -11,6 +11,7 @@ const sessionState = {
   login: vi.fn(),
   logout: vi.fn(),
   refresh: vi.fn(),
+  clearError: vi.fn(),
 };
 
 const taskStoreState = {
@@ -76,7 +77,7 @@ vi.mock('@/stores/feedbackStore', () => ({
 }));
 
 vi.mock('@/components/auth/LoginAsciiCanvas', () => ({
-  LoginAsciiCanvas: () => <div data-testid="login-ascii-canvas" />,
+  LoginAsciiCanvas: () => <div data-testid="login-context-field" />,
 }));
 
 vi.mock('@/components/settings/HumanAccountsPanel', () => ({
@@ -91,9 +92,11 @@ describe('dashboard auth routing', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('heading', { name: 'AGORA' })).toBeInTheDocument();
-    expect(screen.getByText('Agents debate freely, humans decide, craftsmen execute.')).toBeInTheDocument();
-    expect(screen.getByLabelText('Username')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /agora/i })).toBeInTheDocument();
+    expect(
+      screen.getByText('进入一个以治理为中心的工作面。上下文、引用、运行时与审计在同一表面收敛。'),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('用户名')).toBeInTheDocument();
     expect(screen.getByTestId('login-copy-frame')).toBeInTheDocument();
     expect(screen.getByTestId('login-card')).toBeInTheDocument();
   });

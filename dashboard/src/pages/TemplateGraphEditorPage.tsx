@@ -568,7 +568,7 @@ function TemplateGraphEditorContent() {
   };
 
   if (detailLoading) {
-    return <div className="surface-panel surface-panel--workspace">{copy.graphLoadingTitle}</div>;
+    return <div className="surface-panel surface-panel--workspace surface-panel--context-anchor">{copy.graphLoadingTitle}</div>;
   }
 
   if (!draft || !draftGraph) {
@@ -581,7 +581,7 @@ function TemplateGraphEditorContent() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="interior-page">
       <section className="surface-panel surface-panel--workspace">
         <div className="section-title-row">
           <div>

@@ -2,7 +2,9 @@ import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Clock3, Filter, Link2, PanelRightOpen, Search, Workflow } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
+import * as api from '@/lib/api';
 import { useTasksPageCopy } from '@/lib/dashboardCopy';
+import { mapProjectContextDeliveryDto } from '@/lib/projectContextMappers';
 import { useTaskStore } from '@/stores/taskStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
@@ -24,7 +26,8 @@ import {
   getTaskProjectPresentation,
 } from '@/lib/taskProjectPresentation';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import type { CraftsmanExecution, Subtask, TaskAction, TaskBlueprint, TaskConversationEntry, TaskStatus } from '@/types/task';
+import type { ProjectContextDelivery } from '@/types/projectContext';
+import type { CraftsmanExecution, Subtask, Task, TaskAction, TaskBlueprint, TaskConversationEntry, TaskStatus } from '@/types/task';
 
 const TASK_STATE_VALUES = ['in_progress', 'gate_waiting', 'completed', 'pending', 'paused', 'blocked', 'cancelled'] as const;
 const TASK_PRIORITY_VALUES = ['high', 'normal', 'low'] as const;
@@ -36,6 +39,8 @@ type TimelineItem = {
   detail: string;
   timestamp: string;
 };
+
+type TaskTeamMember = NonNullable<Task['teamMembers']>[number];
 
 function mapStatusEventTimelineItem(entry: TaskConversationEntry): TimelineItem | null {
   if (!entry.statusEvent) {
@@ -103,14 +108,22 @@ function formatStageRosterRules(status: TaskStatus | null | undefined, copy: Ret
   return parts.length > 0 ? parts.join(' / ') : copy.stageRosterRulesNone;
 }
 
-function hasRuntimeSelectionDetails(status: TaskStatus | null | undefined) {
-  const members = status?.task.teamMembers ?? [];
-  return members.some((member) => (
-    Boolean(member.runtime_target_ref)
-    || Boolean(member.runtime_flavor)
-    || Boolean(member.runtime_selection_source)
-    || Boolean(member.runtime_selection_reason)
-  ));
+function parseProgressArtifacts(artifacts: string | null): string[] {
+  if (!artifacts) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(artifacts) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => String(item));
+    }
+    if (parsed && typeof parsed === 'object') {
+      return Object.entries(parsed).map(([key, value]) => `${key}: ${String(value)}`);
+    }
+  } catch {
+    // Treat legacy plain-text artifact payloads as a single capture artifact.
+  }
+  return [artifacts];
 }
 
 function TaskBlueprintSection({
@@ -166,6 +179,411 @@ function TaskBlueprintSection({
                   <div key={`${artifact.nodeId}-${artifact.artifactType}`} className="data-row">
                     <span className="type-mono-xs">{artifact.nodeId}</span>
                     <span className="status-pill status-pill--neutral">{artifact.artifactType}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TaskBriefingSection({
+  copy,
+  task,
+  delivery,
+}: {
+  copy: ReturnType<typeof useTasksPageCopy>;
+  task: Task;
+  delivery: ProjectContextDelivery | null;
+}) {
+  return (
+    <section className="task-authority__section task-flow__section">
+      <h4 className="section-title">{copy.briefingTitle}</h4>
+      <p className="type-body-sm mt-3 whitespace-pre-wrap">
+        {delivery?.briefing.markdown ?? task.description ?? copy.briefFallback}
+      </p>
+      {delivery ? (
+        <div className="project-inline-actions mt-4">
+          <span className="status-pill status-pill--neutral">
+            {copy.referenceBundleAudienceLabel}: {delivery.briefing.audience}
+          </span>
+          <span className="status-pill status-pill--neutral">
+            {copy.briefingSourceCountLabel(delivery.briefing.sourceDocuments.length)}
+          </span>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function TaskReferenceBundleSection({
+  copy,
+  loading,
+  delivery,
+  error,
+}: {
+  copy: ReturnType<typeof useTasksPageCopy>;
+  loading: boolean;
+  delivery: ProjectContextDelivery | null;
+  error: string | null;
+}) {
+  return (
+    <section className="task-authority__section task-flow__section">
+      <h4 className="section-title">{copy.referenceBundleTitle}</h4>
+      {loading ? (
+        <p className="type-body-sm mt-3">{copy.referenceBundleLoading}</p>
+      ) : error ? (
+        <p className="type-body-sm mt-3">{error}</p>
+      ) : !delivery?.referenceBundle && !delivery?.runtimeDelivery ? (
+        <p className="type-body-sm mt-3">{copy.referenceBundleEmpty}</p>
+      ) : (
+        <div className="space-y-3 mt-4">
+          {delivery?.referenceBundle ? (
+            <>
+              <div className="project-inline-actions">
+                <span className="status-pill status-pill--neutral">
+                  {copy.referenceBundleCountLabel(delivery.referenceBundle.references.length)}
+                </span>
+                <span className="status-pill status-pill--neutral">
+                  {copy.referenceBundleInventoryLabel}: {delivery.referenceBundle.inventoryCount}
+                </span>
+              </div>
+              <div className="space-y-2">
+                {delivery.referenceBundle.references.slice(0, 5).map((reference) => (
+                  <div key={reference.referenceKey} className="data-row">
+                    <div className="min-w-0 flex-1">
+                      <p className="type-heading-xs">{reference.title ?? reference.slug}</p>
+                      <p className="type-text-xs mt-1">{reference.kind} / {reference.path}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
+
+          {delivery?.runtimeDelivery ? (
+            <div className="space-y-2">
+              <div className="data-row">
+                <div className="min-w-0 flex-1">
+                  <p className="type-label-sm">{copy.referenceBundleWorkspaceLabel}</p>
+                  <p className="type-text-xs mt-2 break-all">{delivery.runtimeDelivery.workspacePath}</p>
+                </div>
+              </div>
+              <div className="data-row">
+                <div className="min-w-0 flex-1">
+                  <p className="type-label-sm">{copy.referenceBundleManifestLabel}</p>
+                  <p className="type-text-xs mt-2 break-all">{delivery.runtimeDelivery.manifestPath}</p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TaskParticipantsSection({
+  copy,
+  members,
+}: {
+  copy: ReturnType<typeof useTasksPageCopy>;
+  members: TaskTeamMember[];
+}) {
+  return (
+    <section className="task-authority__section task-ops__section">
+      <h4 className="section-title">{copy.participantsTitle}</h4>
+      {members.length === 0 ? (
+        <p className="type-body-sm mt-4">{copy.participantsEmpty}</p>
+      ) : (
+        <div className="space-y-3 mt-4">
+          {members.map((member) => (
+            <div key={`${member.role}-${member.agentId}`} className="data-row">
+              <div className="min-w-0 flex-1">
+                <p className="type-label-sm">{member.role} / {displayAgentId(member.agentId)}</p>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                  <span className="type-text-xs">{copy.participantsModelLabel}: {member.model_preference}</span>
+                  <span className="type-text-xs">
+                    {copy.runtimeSelectionTargetLabel}: {member.runtime_target_ref ? displayAgentId(member.runtime_target_ref) : copy.runtimeSelectionEmptyValue}
+                  </span>
+                  <span className="type-text-xs">
+                    {copy.runtimeSelectionFlavorLabel}: {member.runtime_flavor ?? copy.runtimeSelectionEmptyValue}
+                  </span>
+                </div>
+                {(member.runtime_selection_source || member.runtime_selection_reason) ? (
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                    {member.runtime_selection_source ? (
+                      <span className="type-text-xs">
+                        {copy.runtimeSelectionSourceLabel}: {member.runtime_selection_source}
+                      </span>
+                    ) : null}
+                    {member.runtime_selection_reason ? (
+                      <span className="type-text-xs">
+                        {copy.runtimeSelectionReasonLabel}: {member.runtime_selection_reason}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TaskCaptureSection({
+  copy,
+  status,
+}: {
+  copy: ReturnType<typeof useTasksPageCopy>;
+  status: TaskStatus | null | undefined;
+}) {
+  const observations = status?.progress_log ?? [];
+  const terminalSubtasks = (status?.subtasks ?? []).filter((subtask) => TERMINAL_SUBTASK_STATES.has(subtask.status));
+  const hasCapture = observations.length > 0 || terminalSubtasks.length > 0;
+
+  return (
+    <section className="task-authority__section task-flow__section">
+      <h4 className="section-title">{copy.captureTitle}</h4>
+      {!hasCapture ? (
+        <p className="type-body-sm mt-3">{copy.captureEmpty}</p>
+      ) : (
+        <div className="space-y-4 mt-4">
+          {observations.length > 0 ? (
+            <div className="space-y-2">
+              <p className="field-label">{copy.captureObservationsLabel}</p>
+              <div className="space-y-2">
+                {observations.slice(0, 4).map((entry) => {
+                  const artifacts = parseProgressArtifacts(entry.artifacts);
+                  return (
+                    <div key={entry.id} className="data-row">
+                      <div className="min-w-0 flex-1">
+                        <p className="type-label-sm">{entry.actor}</p>
+                        <p className="type-body-sm mt-2">{entry.content}</p>
+                        {artifacts.length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {artifacts.map((artifact) => (
+                              <span key={`${entry.id}-${artifact}`} className="status-pill status-pill--neutral">
+                                {artifact}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                      <span className="type-text-xs">{formatRelativeTimestamp(entry.created_at)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {terminalSubtasks.length > 0 ? (
+            <div className="space-y-2">
+              <p className="field-label">{copy.captureOutputsLabel}</p>
+              <div className="space-y-2">
+                {terminalSubtasks.slice(0, 4).map((subtask) => (
+                  <div key={subtask.id} className="data-row">
+                    <div className="min-w-0 flex-1">
+                      <p className="type-label-sm">{subtask.title}</p>
+                      <p className="type-text-xs mt-2">
+                        {displayAgentId(subtask.assignee)}
+                        {' / '}
+                        {subtask.stage_id}
+                        {' / '}
+                        {subtask.status}
+                      </p>
+                      {subtask.output ? (
+                        <p className="type-body-sm mt-2 whitespace-pre-wrap">{subtask.output}</p>
+                      ) : null}
+                    </div>
+                    <span className="status-pill status-pill--neutral">{subtask.id}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TaskHarvestSection({
+  copy,
+  task,
+  status,
+}: {
+  copy: ReturnType<typeof useTasksPageCopy>;
+  task: Task;
+  status: TaskStatus | null | undefined;
+}) {
+  const terminalSubtasks = (status?.subtasks ?? []).filter((subtask) => TERMINAL_SUBTASK_STATES.has(subtask.status));
+  const hasHarvest = terminalSubtasks.length > 0 || task.archiveStatus != null || task.sourceState === 'done' || task.state === 'completed' || task.state === 'cancelled';
+
+  return (
+    <section className="task-authority__section task-flow__section">
+      <h4 className="section-title">{copy.harvestTitle}</h4>
+      {!hasHarvest ? (
+        <p className="type-body-sm mt-3">{copy.harvestEmpty}</p>
+      ) : (
+        <div className="space-y-4 mt-4">
+          <div className="project-inline-actions">
+            <span className="status-pill status-pill--neutral">
+              {copy.harvestArchiveStatusLabel}: {task.archiveStatus ?? copy.harvestNoArchiveValue}
+            </span>
+            <span className="status-pill status-pill--neutral">
+              {copy.harvestCompletedCountLabel(terminalSubtasks.length)}
+            </span>
+          </div>
+
+          {terminalSubtasks.length > 0 ? (
+            <div className="space-y-2">
+              <p className="field-label">{copy.harvestCandidatesLabel}</p>
+              <div className="space-y-2">
+                {terminalSubtasks.slice(0, 4).map((subtask) => (
+                  <div key={subtask.id} className="data-row">
+                    <div className="min-w-0 flex-1">
+                      <p className="type-label-sm">{subtask.title}</p>
+                      <p className="type-text-xs mt-2">
+                        {displayAgentId(subtask.assignee)}
+                        {' / '}
+                        {subtask.stage_id}
+                        {' / '}
+                        {subtask.status}
+                      </p>
+                    </div>
+                    <span className="type-text-xs">
+                      {subtask.done_at ? formatRelativeTimestamp(subtask.done_at) : copy.stageFallback}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TaskAuditSection({
+  copy,
+  task,
+  status,
+  members,
+}: {
+  copy: ReturnType<typeof useTasksPageCopy>;
+  task: Task;
+  status: TaskStatus | null | undefined;
+  members: TaskTeamMember[];
+}) {
+  const selectionMembers = members.filter((member) => (
+    Boolean(member.runtime_selection_source) || Boolean(member.runtime_selection_reason)
+  ));
+  const statusEvents = (status?.conversation ?? []).filter((entry) => entry.statusEvent);
+  const hasAudit = Boolean(
+    task.controllerRef
+    || task.gateType
+    || task.authority?.approverAccountId != null
+    || status?.currentStageRoster
+    || selectionMembers.length > 0
+    || statusEvents.length > 0
+  );
+
+  return (
+    <section className="task-authority__section task-ops__section">
+      <h4 className="section-title">{copy.auditTitle}</h4>
+      {!hasAudit ? (
+        <p className="type-body-sm mt-4">{copy.auditEmpty}</p>
+      ) : (
+        <div className="space-y-4 mt-4">
+          <div className="space-y-2">
+            <p className="field-label">{copy.auditAuthorityLabel}</p>
+            <div className="task-authority__facts mt-3">
+              <div className="detail-card">
+                <PanelRightOpen size={16} className="detail-card__icon" />
+                <span className="detail-card__label">{copy.auditControllerLabel}</span>
+                <strong className="detail-card__value">{task.controllerRef ?? copy.stageFallback}</strong>
+              </div>
+              <div className="detail-card">
+                <PanelRightOpen size={16} className="detail-card__icon" />
+                <span className="detail-card__label">{copy.auditGateLabel}</span>
+                <strong className="detail-card__value">{task.gateType ?? copy.stageFallback}</strong>
+              </div>
+              <div className="detail-card">
+                <Clock3 size={16} className="detail-card__icon" />
+                <span className="detail-card__label">{copy.auditApproverLabel}</span>
+                <strong className="detail-card__value">
+                  {task.authority?.approverAccountId != null ? String(task.authority.approverAccountId) : copy.stageFallback}
+                </strong>
+              </div>
+            </div>
+          </div>
+
+          {status?.currentStageRoster ? (
+            <div className="space-y-2">
+              <p className="field-label">{copy.auditRosterLabel}</p>
+              <div className="data-row">
+                <div className="min-w-0 flex-1">
+                  <p className="type-label-sm">{status.currentStageRoster.stageId}</p>
+                  <p className="type-text-xs mt-2">
+                    {copy.stageRosterRulesLabel}: {formatStageRosterRules(status, copy)}
+                  </p>
+                  <p className="type-text-xs mt-2">
+                    {copy.stageRosterDesiredLabel}: {status.currentStageRoster.desiredParticipantRefs.map(displayAgentId).join(', ') || copy.stageFallback}
+                  </p>
+                  <p className="type-text-xs mt-2">
+                    {copy.stageRosterJoinedLabel}: {status.currentStageRoster.joinedParticipantRefs.map(displayAgentId).join(', ') || copy.stageFallback}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {selectionMembers.length > 0 ? (
+            <div className="space-y-2">
+              <p className="field-label">{copy.auditSelectionTraceLabel}</p>
+              <div className="space-y-2">
+                {selectionMembers.map((member) => (
+                  <div key={`${member.role}-${member.agentId}`} className="data-row">
+                    <div className="min-w-0 flex-1">
+                      <p className="type-label-sm">{member.role} / {displayAgentId(member.agentId)}</p>
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                        {member.runtime_selection_source ? (
+                          <span className="type-text-xs">
+                            {copy.runtimeSelectionSourceLabel}: {member.runtime_selection_source}
+                          </span>
+                        ) : null}
+                        {member.runtime_selection_reason ? (
+                          <span className="type-text-xs">
+                            {copy.runtimeSelectionReasonLabel}: {member.runtime_selection_reason}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {statusEvents.length > 0 ? (
+            <div className="space-y-2">
+              <p className="field-label">{copy.auditTrailLabel}</p>
+              <div className="space-y-2">
+                {statusEvents.slice(0, 4).map((entry) => (
+                  <div key={entry.id} className="data-row">
+                    <div className="min-w-0 flex-1">
+                      <p className="type-label-sm">{entry.statusEvent?.eventType ?? entry.provider}</p>
+                      <p className="type-body-sm mt-2">{entry.body}</p>
+                    </div>
+                    <span className="type-text-xs">{formatRelativeTimestamp(entry.occurred_at)}</span>
                   </div>
                 ))}
               </div>
@@ -317,6 +735,61 @@ export function TasksPage() {
     routeTaskStatus?.task ??
     (taskId ? filteredTasks.find((task) => task.id === taskId) ?? null : null);
   const routeTimeline = useMemo(() => buildTaskTimeline(routeTaskStatus), [routeTaskStatus]);
+  const contextTask = routeTask ?? activeTask;
+  const contextRequestKey = contextTask?.projectId ? `${contextTask.projectId}:${contextTask.id}` : null;
+  const [contextDeliveryState, setContextDeliveryState] = useState<{
+    requestKey: string | null;
+    error: string | null;
+    delivery: ProjectContextDelivery | null;
+  }>({
+    requestKey: null,
+    error: null,
+    delivery: null,
+  });
+  const contextDeliveryLoading = Boolean(contextRequestKey && contextDeliveryState.requestKey !== contextRequestKey);
+
+  useEffect(() => {
+    if (!contextTask?.projectId || !contextRequestKey) {
+      return;
+    }
+    let active = true;
+    void api.getProjectContextDelivery(contextTask.projectId, {
+      audience: 'controller',
+      task_id: contextTask.id,
+    })
+      .then((response) => {
+        if (!active) {
+          return;
+        }
+        setContextDeliveryState({
+          requestKey: contextRequestKey,
+          error: null,
+          delivery: mapProjectContextDeliveryDto(response),
+        });
+      })
+      .catch((deliveryError) => {
+        if (!active) {
+          return;
+        }
+        setContextDeliveryState({
+          requestKey: contextRequestKey,
+          error: deliveryError instanceof Error ? deliveryError.message : String(deliveryError),
+          delivery: null,
+        });
+      });
+    return () => {
+      active = false;
+    };
+  }, [contextRequestKey, contextTask?.id, contextTask?.projectId]);
+  const currentContextDelivery =
+    contextRequestKey && contextDeliveryState.requestKey === contextRequestKey
+      ? contextDeliveryState.delivery
+      : null;
+  const currentContextDeliveryError =
+    contextRequestKey && contextDeliveryState.requestKey === contextRequestKey
+      ? contextDeliveryState.error
+      : null;
+
   const shouldShowDetailLoading = Boolean(taskId && detailLoading && !routeTaskStatus);
   const shouldShowDetailError = Boolean(taskId && !detailLoading && !routeTaskStatus && !routeTask && error);
   const shouldShowDetailEmpty = Boolean(taskId && !detailLoading && !routeTaskStatus && !routeTask && !error);
@@ -705,8 +1178,8 @@ export function TasksPage() {
   }
 
   return (
-    <div className="workspace-page workspace-page--locked">
-      <section className="surface-panel surface-panel--workspace">
+    <div className="workspace-page workspace-page--locked interior-page">
+      <section className="surface-panel surface-panel--workspace surface-panel--context-anchor">
         <div className="workbench-masthead">
           <div>
             <p className="page-kicker">{tasksPageCopy.kicker}</p>
@@ -893,6 +1366,12 @@ export function TasksPage() {
                     </div>
                   </div>
 
+                  <TaskBriefingSection
+                    copy={tasksPageCopy}
+                    task={activeTask}
+                    delivery={currentContextDelivery}
+                  />
+
                   <div className="task-authority__section task-flow__section">
                     <div className="task-flow__facts">
                       <div className="detail-card">
@@ -922,6 +1401,13 @@ export function TasksPage() {
                     blueprint={activeBlueprint}
                     copy={tasksPageCopy}
                     currentStageId={activeStatus?.task.current_stage ?? null}
+                  />
+
+                  <TaskReferenceBundleSection
+                    copy={tasksPageCopy}
+                    loading={contextDeliveryLoading}
+                    delivery={currentContextDelivery}
+                    error={currentContextDeliveryError}
                   />
 
                   <div className="task-authority__section task-flow__section">
@@ -1103,6 +1589,10 @@ export function TasksPage() {
                       <p className="type-body-sm mt-4">{tasksPageCopy.executionEmpty}</p>
                     )}
                   </div>
+
+                  <TaskCaptureSection copy={tasksPageCopy} status={activeStatus} />
+
+                  <TaskHarvestSection copy={tasksPageCopy} task={activeTask} status={activeStatus} />
                 </div>
               ) : (
                 <div className="empty-state">
@@ -1115,6 +1605,8 @@ export function TasksPage() {
             <aside className="workbench-pane workbench-pane--inspector task-pane task-pane--ops">
               {activeTask ? (
                 <div className="task-ops__stack">
+                  <TaskParticipantsSection copy={tasksPageCopy} members={activeMembers} />
+
                   <div className="task-authority__section task-ops__section">
                     <h4 className="section-title">{tasksPageCopy.governanceTitle}</h4>
                     <div className="task-authority__facts mt-4">
@@ -1198,6 +1690,13 @@ export function TasksPage() {
                       </div>
                     ) : null}
                   </div>
+
+                  <TaskAuditSection
+                    copy={tasksPageCopy}
+                    task={activeTask}
+                    status={activeStatus}
+                    members={activeMembers}
+                  />
 
                   <div className="task-authority__section task-ops__section">
                     <h4 className="section-title">{tasksPageCopy.actionsTitle}</h4>
@@ -1392,10 +1891,34 @@ export function TasksPage() {
               </div>
 
               <section className="sheet-section">
+                <TaskBriefingSection
+                  copy={tasksPageCopy}
+                  task={routeTask}
+                  delivery={currentContextDelivery}
+                />
+              </section>
+
+              <section className="sheet-section">
                 <TaskBlueprintSection
                   blueprint={routeTaskStatus?.taskBlueprint}
                   copy={tasksPageCopy}
                   currentStageId={routeTaskStatus?.task.current_stage ?? null}
+                />
+              </section>
+
+              <section className="sheet-section">
+                <TaskReferenceBundleSection
+                  copy={tasksPageCopy}
+                  loading={contextDeliveryLoading}
+                  delivery={currentContextDelivery}
+                  error={currentContextDeliveryError}
+                />
+              </section>
+
+              <section className="sheet-section">
+                <TaskParticipantsSection
+                  copy={tasksPageCopy}
+                  members={routeTaskStatus?.task.teamMembers ?? routeTask.teamMembers ?? []}
                 />
               </section>
 
@@ -1419,6 +1942,23 @@ export function TasksPage() {
                     </div>
                   ))}
                 </div>
+              </section>
+
+              <section className="sheet-section">
+                <TaskCaptureSection copy={tasksPageCopy} status={routeTaskStatus} />
+              </section>
+
+              <section className="sheet-section">
+                <TaskHarvestSection copy={tasksPageCopy} task={routeTask} status={routeTaskStatus} />
+              </section>
+
+              <section className="sheet-section">
+                <TaskAuditSection
+                  copy={tasksPageCopy}
+                  task={routeTask}
+                  status={routeTaskStatus}
+                  members={routeTaskStatus?.task.teamMembers ?? routeTask.teamMembers ?? []}
+                />
               </section>
 
               <section className="sheet-section">
@@ -1468,118 +2008,6 @@ export function TasksPage() {
                   ) : (
                     <p className="type-body-sm">{tasksPageCopy.conversationEmpty}</p>
                   )}
-                </div>
-              </section>
-
-              <section className="sheet-section">
-                <h4 className="section-title">{tasksPageCopy.stageRosterTitle}</h4>
-                {routeTaskStatus?.currentStageRoster ? (
-                  <div className="mt-4 space-y-3">
-                    <div className="data-row">
-                      <div className="min-w-0 flex-1">
-                        <p className="type-label-sm">{routeTaskStatus.currentStageRoster.stageId}</p>
-                        <p className="type-text-xs mt-2">
-                          {tasksPageCopy.stageRosterRulesLabel}: {formatStageRosterRules(routeTaskStatus, tasksPageCopy)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="data-row">
-                      <div className="min-w-0 flex-1">
-                        <p className="type-label-sm">{tasksPageCopy.stageRosterDesiredLabel}</p>
-                        <p className="type-body-sm mt-2">
-                          {routeTaskStatus.currentStageRoster.desiredParticipantRefs.map(displayAgentId).join(', ') || tasksPageCopy.stageFallback}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="data-row">
-                      <div className="min-w-0 flex-1">
-                        <p className="type-label-sm">{tasksPageCopy.stageRosterJoinedLabel}</p>
-                        <p className="type-body-sm mt-2">
-                          {routeTaskStatus.currentStageRoster.joinedParticipantRefs.map(displayAgentId).join(', ') || tasksPageCopy.stageFallback}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="type-body-sm mt-4">{tasksPageCopy.stageRosterRulesNone}</p>
-                )}
-              </section>
-
-              <section className="sheet-section">
-                <h4 className="section-title">{tasksPageCopy.runtimeSelectionTitle}</h4>
-                {hasRuntimeSelectionDetails(routeTaskStatus) ? (
-                  <div className="mt-4 space-y-3">
-                    {(routeTaskStatus?.task.teamMembers ?? [])
-                      .filter((member) => (
-                        member.runtime_target_ref
-                        || member.runtime_flavor
-                        || member.runtime_selection_source
-                        || member.runtime_selection_reason
-                      ))
-                      .map((member) => (
-                        <div key={`${member.role}-${member.agentId}`} className="data-row">
-                          <div className="min-w-0 flex-1">
-                            <p className="type-label-sm">{member.role} / {displayAgentId(member.agentId)}</p>
-                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                              {member.runtime_target_ref ? (
-                                <span className="type-text-xs">
-                                  {tasksPageCopy.runtimeSelectionTargetLabel}: {displayAgentId(member.runtime_target_ref)}
-                                </span>
-                              ) : null}
-                              {member.runtime_flavor ? (
-                                <span className="type-text-xs">
-                                  {tasksPageCopy.runtimeSelectionFlavorLabel}: {member.runtime_flavor}
-                                </span>
-                              ) : null}
-                              {member.runtime_selection_source ? (
-                                <span className="type-text-xs">
-                                  {tasksPageCopy.runtimeSelectionSourceLabel}: {member.runtime_selection_source}
-                                </span>
-                              ) : null}
-                            </div>
-                            {member.runtime_selection_reason ? (
-                              <p className="type-body-sm mt-2">
-                                {tasksPageCopy.runtimeSelectionReasonLabel}: {member.runtime_selection_reason}
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                ) : (
-                  <p className="type-body-sm mt-4">{tasksPageCopy.runtimeSelectionEmpty}</p>
-                )}
-              </section>
-
-              <section className="sheet-section">
-                <h4 className="section-title">{tasksPageCopy.progressTitle}</h4>
-                <div className="mt-4 space-y-3">
-                  {(routeTaskStatus?.progress_log ?? []).map((entry) => (
-                    <div key={entry.id} className="data-row">
-                      <div className="min-w-0 flex-1">
-                        <p className="type-label-sm">{entry.actor}</p>
-                        <p className="type-body-sm mt-2">{entry.content}</p>
-                      </div>
-                      <span className="type-text-xs">{formatRelativeTimestamp(entry.created_at)}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section className="sheet-section">
-                <h4 className="section-title">{tasksPageCopy.subtasksTitle}</h4>
-                <div className="mt-4 space-y-3">
-                  {(routeTaskStatus?.subtasks ?? []).map((subtask) => (
-                    <div key={subtask.id} className="data-row">
-                      <div className="min-w-0 flex-1">
-                        <p className="type-heading-xs">{subtask.title}</p>
-                        <p className="type-text-xs mt-2">
-                          {displayAgentId(subtask.assignee)} / {subtask.craftsman_type ?? tasksPageCopy.subtaskFallbackType}
-                        </p>
-                      </div>
-                      <span className="status-pill status-pill--neutral">{subtask.status}</span>
-                    </div>
-                  ))}
                 </div>
               </section>
             </>

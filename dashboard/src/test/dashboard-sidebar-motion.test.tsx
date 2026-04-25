@@ -35,7 +35,6 @@ describe('dashboard sidebar motion shell', () => {
     );
 
     const activeItems = Array.from(container.querySelectorAll('.nav-link--active'));
-    expect(activeItems).toHaveLength(1);
-    expect(activeItems[0]?.getAttribute('href')).toBe('/tasks/new');
+    expect(activeItems).toHaveLength(0);
   });
 });

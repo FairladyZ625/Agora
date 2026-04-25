@@ -11,7 +11,9 @@ import {
   Waypoints,
   ShieldCheck,
   Settings,
+  ServerCog,
   SquarePen,
+  UsersRound,
   Workflow,
   X,
   ChevronsLeft,
@@ -43,6 +45,8 @@ const navIcons = {
   templates: Workflow,
   create: SquarePen,
   reviews: ShieldCheck,
+  participants: UsersRound,
+  system: ServerCog,
   settings: Settings,
 } as const;
 
@@ -77,6 +81,14 @@ export function Sidebar({
 
     if (key === 'reviews') {
       return pathname === '/reviews' || pathname.startsWith('/reviews/');
+    }
+
+    if (key === 'participants') {
+      return pathname === '/participants' || pathname === '/agents';
+    }
+
+    if (key === 'system') {
+      return pathname === '/system' || pathname === '/runtime-targets' || pathname === '/bridges' || pathname === '/templates' || pathname.startsWith('/templates/');
     }
 
     return isActive || pathname === to;
@@ -138,7 +150,7 @@ export function Sidebar({
       {mobileOpen && (
         <button
           type="button"
-          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          className="app-sidebar__mobile-backdrop md:hidden"
           aria-label={t('common.closeNavigation')}
           onClick={onCloseMobile}
         />
@@ -151,11 +163,6 @@ export function Sidebar({
           isMobile ? 'app-sidebar--mobile' : effectiveCollapsed ? 'app-sidebar--collapsed' : 'app-sidebar--expanded',
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         )}
-        style={{
-          background: 'var(--color-panel)',
-          borderColor: 'var(--color-border)',
-          boxShadow: 'var(--shadow-lg)',
-        }}
       >
         {!isMobile ? (
           <div className="sidebar-telemetry-seam" aria-hidden="true" />
@@ -166,7 +173,6 @@ export function Sidebar({
               'sidebar-brand-shell relative flex items-center border-b px-4 py-2',
               effectiveCollapsed ? 'justify-center' : 'justify-start',
             )}
-            style={{ borderColor: 'var(--color-border)' }}
           >
             <BrandLogo collapsed={effectiveCollapsed} />
 
@@ -224,13 +230,13 @@ export function Sidebar({
           {!isMobile ? (
             <div
               className="border-t px-3 py-3"
-              style={{ borderColor: 'var(--color-border)' }}
+  
             >
               <button
                 type="button"
                 onClick={onToggle}
                 className="sidebar-toggle-button"
-                style={{ borderColor: 'var(--color-border)' }}
+    
                 aria-label={collapsed ? t('common.expandSidebar') : t('common.collapseSidebar')}
               >
                 {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}

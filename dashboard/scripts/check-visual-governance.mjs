@@ -9,6 +9,8 @@ const allowedCssFiles = new Set([
   path.join(srcDir, 'styles', 'tokens.css'),
 ]);
 const colorPattern = /#(?:[0-9a-fA-F]{3,8})\b|rgba?\(|hsla?\(/;
+const namedPaletteColorPattern =
+  /\b(?:mediumslateblue|slateblue|royalblue|mediumpurple|lavender|cornflowerblue|steelblue|plum|purple|violet|brown|orange|amber)\b/i;
 const arbitraryTailwindPattern =
   /\b(?:text|tracking|grid-cols|bg|border|rounded|h|w|min-w|max-w|px|py|pt|pb|pl|pr|mt|mb|ml|mr)-\[[^\]]+\]/;
 const freeSizePropPattern =
@@ -48,6 +50,9 @@ function inspectFile(filePath) {
     lines.forEach((line, index) => {
       if (colorPattern.test(line)) {
         failures.push(`${relativePath}:${index + 1} raw color literal is not allowed outside src/index.css theme tokens`);
+      }
+      if (namedPaletteColorPattern.test(line)) {
+        failures.push(`${relativePath}:${index + 1} named palette color is not allowed outside theme tokens`);
       }
       if (arbitraryTailwindPattern.test(line)) {
         failures.push(`${relativePath}:${index + 1} Tailwind arbitrary value is not allowed; use semantic classes or top-level tokens`);

@@ -435,11 +435,12 @@ describe('dashboard mobile page density', () => {
       vi.advanceTimersByTime(500);
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /等待裁决/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: '打开焦点工作面' })[1]);
 
     expect(container.querySelector('.home-os__dag-board')).toBeNull();
     expect(container.querySelector('.home-os__terminal')).toBeNull();
-    expect(container.querySelector('.home-os__rail-summary')).not.toBeNull();
+    expect(container.querySelector('.home-mgo__rail')).not.toBeNull();
+    expect(container.querySelector('.home-mgo__focus-card')).not.toBeNull();
   });
 
   it('drops the secondary agents focus panel from the mobile first paint', () => {
@@ -449,7 +450,8 @@ describe('dashboard mobile page density', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.queryByText('最值得先看的运行面')).not.toBeInTheDocument();
-    expect(screen.getByText('进入三条主轴查看细节')).toBeInTheDocument();
+    expect(screen.queryByText('最值得先看的参与面')).not.toBeInTheDocument();
+    expect(screen.queryByText('进入三条参与主轴查看细节')).not.toBeInTheDocument();
+    expect(screen.getByTestId('agents-participation-map')).toBeInTheDocument();
   });
 });

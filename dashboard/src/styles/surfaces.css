@@ -27,8 +27,40 @@
 }
 
 .surface-panel--workspace {
-  box-shadow: var(--shadow-workspace);
-  border-color: var(--color-border);
+  border-color: var(--surface-workspace-border);
+  background: var(--surface-workspace-bg);
+  box-shadow: var(--surface-workspace-shadow);
+}
+
+.surface-panel--context-anchor {
+  background: var(--surface-context-anchor-bg);
+  border-color: var(--surface-workspace-border);
+}
+
+.surface-panel--context-anchor::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: min(42%, 520px);
+  height: 1px;
+  background: var(--surface-context-anchor-rail);
+  opacity: 0.86;
+  pointer-events: none;
+}
+
+.surface-panel--context-anchor::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--surface-context-anchor-veil);
+  opacity: 0.9;
+}
+
+.surface-panel--context-anchor > * {
+  position: relative;
+  z-index: 1;
 }
 
 .surface-panel--intro {
